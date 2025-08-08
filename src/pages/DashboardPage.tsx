@@ -30,5 +30,5 @@ export default function DashboardPage() {
         fetchFamilys();
     }, [])
 
-    return <Dashboard members={members} listFamily={listFamily} />
+    return <Dashboard loading={isLoading} members={members} listFamily={listFamily} />
 }
