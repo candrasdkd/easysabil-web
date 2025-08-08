@@ -26,8 +26,9 @@ import {
     type Member,
 } from '../types/Member';
 import PageContainer from './PageContainer';
-import { CircularProgress, TablePagination } from '@mui/material';
+import { Dialog, TablePagination, TextField, Typography } from '@mui/material';
 import dayjs from 'dayjs';
+import { GridToolbar } from '@mui/x-data-grid/internals';
 
 const INITIAL_PAGE_SIZE = 30;
 
@@ -42,6 +43,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const [allMembers, setAllMembers] = React.useState<Member[]>(members);
+    const [openPasswordDialog, setOpenPasswordDialog] = React.useState(false);
+    const [password, setPassword] = React.useState('');
+    const [requiredPassword, setRequiredPassword] = React.useState<string | null>(null);
+    const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
+
 
     const dialogs = useDialogs();
     const notifications = useNotifications();
@@ -133,6 +139,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         try {
             const start = paginationModel.page * paginationModel.pageSize;
             const end = start + paginationModel.pageSize;
+            console.log(filterModel);
 
             let filteredRows = allMembers.filter((member) => {
                 return filterModel.items.every((filterItem) => {
@@ -144,8 +151,29 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     switch (operator) {
                         case 'contains': return strVal.includes(strFilter);
                         case 'equals': return strVal === strFilter;
+                        case 'doesNotContain': return !strVal.includes(strFilter);
+                        case 'doesNotEqual': return strVal !== strFilter;
+                        case 'greaterThan': return strVal > strFilter;
+                        case 'greaterThanOrEqual': return strVal >= strFilter;
+                        case 'lessThan': return strVal < strFilter;
+                        case 'lessThanOrEqual': return strVal <= strFilter;
+                        case 'between': return strVal > strFilter && strVal < strFilter;
+                        case 'notBetween': return strVal < strFilter || strVal > strFilter;
+                        case 'isEmpty': return !strVal;
+                        case 'isNotEmpty': return !!strVal;
                         case 'startsWith': return strVal.startsWith(strFilter);
                         case 'endsWith': return strVal.endsWith(strFilter);
+                        case 'isAnyOf': return (Array.isArray(value) && value.includes(strVal));
+                        case 'isNoneOf': return (Array.isArray(value) && !value.includes(strVal));
+                        case 'startsWithAnyOf': return (Array.isArray(value) && value.some((str) => strVal.startsWith(str)));
+                        case 'endsWithAnyOf': return (Array.isArray(value) && value.some((str) => strVal.endsWith(str)));
+                        case 'is': return strVal === strFilter;
+                        case 'not': return strVal !== strFilter;
+                        case 'isNotAnyOf': return (Array.isArray(value) && !value.includes(strVal));
+                        case 'isNotNoneOf': return (Array.isArray(value) && value.includes(strVal));
+                        case 'isNot': return strVal !== strFilter;
+                        case 'isNotBetween': return strVal < strFilter || strVal > strFilter;
+                        case 'isNotOneOf': return (Array.isArray(value) && !value.includes(strVal));
                         default: return true;
                     }
                 });
@@ -201,54 +229,85 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     const handleRowClick = React.useCallback<GridEventListener<'rowClick'>>(
         ({ row }) => {
-            navigate(`/members/${row.uuid}`);
+            verifyPasswordAndRun('superadmin354', () => {
+                navigate(`/members/${row.uuid}`);
+            })
         },
         [navigate],
     );
 
     const handleCreateClick = React.useCallback(() => {
-        navigate('/members/new');
+        verifyPasswordAndRun('admin354', () => {
+            navigate('/members/new');
+        });
     }, [navigate]);
 
     const handleRowEdit = React.useCallback(
         (member: Member) => () => {
-            navigate(`/members/${member.uuid}/edit`);
+            verifyPasswordAndRun('superadmin354', () => {
+                navigate(`/members/${member.uuid}/edit`);
+            });
         },
         [navigate],
     );
 
     const handleRowDelete = React.useCallback(
-        (member: Member) => async () => {
-            const confirmed = await dialogs.confirm(
-                `Kamu yakin ingin menghapus data ini?`,
-                {
-                    title: `Hapus ${member.name}?`,
-                    severity: 'error',
-                    okText: 'Delete',
-                    cancelText: 'Cancel',
-                },
-            );
+        (member: Member) => () => {
+            verifyPasswordAndRun('superadmin354', async () => {
+                const confirmed = await dialogs.confirm(
+                    `Kamu yakin ingin menghapus data ini?`,
+                    {
+                        title: `Hapus ${member.name}?`,
+                        severity: 'error',
+                        okText: 'Delete',
+                        cancelText: 'Cancel',
+                    },
+                );
 
-            if (confirmed) {
-                try {
-                    notifications.show('Employee deleted successfully.', {
-                        severity: 'success',
-                        autoHideDuration: 3000,
-                    });
-                    loadData();
-                } catch (deleteError) {
-                    notifications.show(
-                        `Failed to delete employee. Reason:' ${(deleteError as Error).message}`,
-                        {
-                            severity: 'error',
+                if (confirmed) {
+                    try {
+                        notifications.show('Employee deleted successfully.', {
+                            severity: 'success',
                             autoHideDuration: 3000,
-                        },
-                    );
+                        });
+                        loadData();
+                    } catch (deleteError) {
+                        notifications.show(
+                            `Failed to delete employee. Reason:' ${(deleteError as Error).message}`,
+                            {
+                                severity: 'error',
+                                autoHideDuration: 3000,
+                            },
+                        );
+                    }
                 }
-            }
+            });
         },
         [dialogs, notifications, loadData],
     );
+
+    const verifyPasswordAndRun = (expectedPassword: string, action: () => void) => {
+        setRequiredPassword(expectedPassword);
+        setPendingAction(() => action);
+        setPassword('');
+        setOpenPasswordDialog(true);
+    };
+
+    const handlePasswordConfirm = () => {
+        if (password === requiredPassword) {
+            setOpenPasswordDialog(false);
+            setPassword('');
+            setRequiredPassword(null);
+            if (pendingAction) {
+                pendingAction();
+            }
+        } else {
+            notifications.show('Password Salah', {
+                severity: 'error',
+                autoHideDuration: 3000,
+            });
+        }
+    };
 
     const initialState = React.useMemo(
         () => ({
@@ -261,33 +320,37 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         () => [
             {
                 field: 'name',
-                headerName: 'NAME',
+                headerName: 'NAMA',
                 width: 200,
-                headerAlign: 'center'
+                headerAlign: 'center',
+                filterable: true,
             },
             {
                 field: 'level',
-                headerName: 'CATEGORY',
+                headerName: 'JENJANG',
                 width: 140,
                 align: 'center',
-                headerAlign: 'center'
+                headerAlign: 'center',
+                filterable: true,
             },
             {
                 field: 'gender',
-                headerName: 'GENDER',
+                headerName: 'JENIS KELAMIN',
                 width: 140,
                 align: 'center',
-                headerAlign: 'center'
+                headerAlign: 'center',
+                filterable: true,
             },
             {
                 field: 'age',
-                headerName: 'AGE',
+                headerName: 'UMUR',
                 align: 'center',
-                headerAlign: 'center'
+                headerAlign: 'center',
+                filterable: true,
             },
             {
                 field: 'date_of_birth',
-                headerName: 'DOB',
+                headerName: 'TANGGAL LAHIR',
                 type: 'date',
                 valueGetter: (value) => value && new Date(value),
                 valueFormatter: (value) => {
@@ -297,15 +360,17 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 width: 140,
                 align: 'center',
                 headerAlign: 'center',
+                filterable: true,
             },
             {
                 field: 'marriage_status',
-                headerName: 'STATUS',
+                headerName: 'STATUS PERNIKAHAN',
                 type: 'singleSelect',
                 valueOptions: ['Belum Menikah', 'Menikah', 'Janda', 'Duda'],
                 width: 160,
                 align: 'center',
                 headerAlign: 'center',
+                filterable: true,
             },
             {
                 field: 'actions',
@@ -351,31 +416,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         onClick={handleCreateClick}
                         startIcon={<AddIcon />}
                     >
-                        Create
+                        Tambah
                     </Button>
                 </Stack>
             }
         >
             <Box sx={{ flex: 1, width: '100%', position: 'relative' }}>
-                {loading && (
-                    <Box
-                        sx={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            zIndex: 10,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: 'rgba(255, 255, 255, 0.5)',
-                        }}
-                    >
-                        <CircularProgress />
-                    </Box>
-                )}
-
                 {error ? (
                     <Box sx={{ flexGrow: 1 }}>
                         <Alert severity="error">{error.message}</Alert>
@@ -396,6 +442,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         filterModel={filterModel}
                         onFilterModelChange={handleFilterModelChange}
                         disableRowSelectionOnClick
+                        disableMultipleRowSelection={false}
                         onRowClick={handleRowClick}
                         loading={loading}
                         initialState={initialState}
@@ -442,11 +489,39 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     labelRowsPerPage="Show Data"
                                 />
                             ),
+                            toolbar: GridToolbar,
                         }}
 
                     />
                 )}
             </Box>
+            <Dialog open={openPasswordDialog} onClose={() => setOpenPasswordDialog(false)}>
+                <Box p={3} minWidth={300}>
+                    <Typography variant="h6" mb={2}>
+                        Masukkan Password
+                    </Typography>
+                    <TextField
+                        type="password"
+                        label="Password"
+                        fullWidth
+                        margin="normal"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handlePasswordConfirm();
+                            }
+                        }}
+                    />
+                    <Stack direction="row" justifyContent="flex-end" spacing={2} mt={2}>
+                        <Button onClick={() => setOpenPasswordDialog(false)}>Batal</Button>
+                        <Button variant="contained" onClick={handlePasswordConfirm}>
+                            Konfirmasi
+                        </Button>
+                    </Stack>
+                </Box>
+            </Dialog>
+
 
         </PageContainer>
     );
