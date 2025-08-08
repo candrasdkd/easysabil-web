@@ -1,34 +1,44 @@
 import * as React from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
-import Stack from '@mui/material/Stack';
-import Tooltip from '@mui/material/Tooltip';
+import {
+    Box,
+    Button,
+    Dialog,
+    IconButton,
+    Stack,
+    TextField,
+    Tooltip,
+    Typography,
+    Alert,
+    MenuItem,
+    TablePagination,
+    Checkbox,
+    ListItemText,
+    Fab
+} from '@mui/material';
 import {
     DataGrid,
     GridActionsCellItem,
+    gridClasses,
     type GridColDef,
-    type GridFilterModel,
     type GridPaginationModel,
     type GridSortModel,
     type GridEventListener,
-    gridClasses,
+    GridFilterListIcon,
 } from '@mui/x-data-grid';
+import DownloadIcon from '@mui/icons-material/Download';
+import { GridToolbar } from '@mui/x-data-grid/internals';
+import { useNavigate } from 'react-router';
 import AddIcon from '@mui/icons-material/Add';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import dayjs from 'dayjs';
+import PageContainer from './PageContainer';
 import { useDialogs } from '../hooks/useDialogs/useDialogs';
 import useNotifications from '../hooks/useNotifications/useNotifications';
-import {
-    type Member,
-} from '../types/Member';
-import PageContainer from './PageContainer';
-import { Dialog, TablePagination, TextField, Typography } from '@mui/material';
-import dayjs from 'dayjs';
-import { GridToolbar } from '@mui/x-data-grid/internals';
+import { type Member } from '../types/Member';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const INITIAL_PAGE_SIZE = 30;
 
@@ -39,34 +49,25 @@ type Props = {
 };
 
 export default function MemberList({ loading, members, refreshMembers }: Props) {
-    const { pathname } = useLocation();
-    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const dialogs = useDialogs();
+    const notifications = useNotifications();
+    const [searchText, setSearchText] = React.useState('');
+    const [selectedGender, setSelectedGender] = React.useState<string[]>([]);
+    const [selectedLevel, setSelectedLevel] = React.useState<string[]>([]);
+    const [selectedMarriageStatus, setSelectedMarriageStatus] = React.useState<string[]>([]);
+    const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
     const [allMembers, setAllMembers] = React.useState<Member[]>(members);
     const [openPasswordDialog, setOpenPasswordDialog] = React.useState(false);
     const [password, setPassword] = React.useState('');
     const [requiredPassword, setRequiredPassword] = React.useState<string | null>(null);
     const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
-
-
-    const dialogs = useDialogs();
-    const notifications = useNotifications();
-
+    const [error, setError] = React.useState<Error | null>(null);
     const [paginationModel, setPaginationModel] = React.useState<GridPaginationModel>({
-        page: searchParams.get('page') ? Number(searchParams.get('page')) : 0,
-        pageSize: searchParams.get('pageSize')
-            ? Number(searchParams.get('pageSize'))
-            : INITIAL_PAGE_SIZE,
+        page: 0,
+        pageSize: INITIAL_PAGE_SIZE,
     });
-    const [filterModel, setFilterModel] = React.useState<GridFilterModel>(
-        searchParams.get('filter')
-            ? JSON.parse(searchParams.get('filter') ?? '')
-            : { items: [] },
-    );
-    const [sortModel, setSortModel] = React.useState<GridSortModel>(
-        searchParams.get('sort') ? JSON.parse(searchParams.get('sort') ?? '') : [],
-    );
-
+    const [sortModel, setSortModel] = React.useState<GridSortModel>([]);
     const [rowsState, setRowsState] = React.useState<{
         rows: Member[];
         rowCount: number;
@@ -75,122 +76,37 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         rowCount: 0,
     });
 
-    const [error, setError] = React.useState<Error | null>(null);
-
-    const handlePaginationModelChange = React.useCallback(
-        (model: GridPaginationModel) => {
-            setPaginationModel(model);
-
-            searchParams.set('page', String(model.page));
-            searchParams.set('pageSize', String(model.pageSize));
-
-            const newSearchParamsString = searchParams.toString();
-
-            navigate(
-                `${pathname}${newSearchParamsString ? '?' : ''}${newSearchParamsString}`,
-            );
-        },
-        [navigate, pathname, searchParams],
-    );
-
-    const handleFilterModelChange = React.useCallback(
-        (model: GridFilterModel) => {
-            setFilterModel(model);
-
-            if (
-                model.items.length > 0 ||
-                (model.quickFilterValues && model.quickFilterValues.length > 0)
-            ) {
-                searchParams.set('filter', JSON.stringify(model));
-            } else {
-                searchParams.delete('filter');
-            }
-
-            const newSearchParamsString = searchParams.toString();
-
-            navigate(
-                `${pathname}${newSearchParamsString ? '?' : ''}${newSearchParamsString}`,
-            );
-        },
-        [navigate, pathname, searchParams],
-    );
-
-    const handleSortModelChange = React.useCallback(
-        (model: GridSortModel) => {
-            setSortModel(model);
-
-            if (model.length > 0) {
-                searchParams.set('sort', JSON.stringify(model));
-            } else {
-                searchParams.delete('sort');
-            }
-
-            const newSearchParamsString = searchParams.toString();
-
-            navigate(
-                `${pathname}${newSearchParamsString ? '?' : ''}${newSearchParamsString}`,
-            );
-        },
-        [navigate, pathname, searchParams],
-    );
-
     const loadData = React.useCallback(() => {
         setError(null);
         try {
             const start = paginationModel.page * paginationModel.pageSize;
             const end = start + paginationModel.pageSize;
-            console.log(filterModel);
 
-            let filteredRows = allMembers.filter((member) => {
-                return filterModel.items.every((filterItem) => {
-                    const { field, value, operator } = filterItem;
-                    const targetValue = member[field as keyof Member];
-                    if (!value || !operator) return true;
-                    const strVal = String(targetValue ?? '').toLowerCase();
-                    const strFilter = String(value).toLowerCase();
-                    switch (operator) {
-                        case 'contains': return strVal.includes(strFilter);
-                        case 'equals': return strVal === strFilter;
-                        case 'doesNotContain': return !strVal.includes(strFilter);
-                        case 'doesNotEqual': return strVal !== strFilter;
-                        case 'greaterThan': return strVal > strFilter;
-                        case 'greaterThanOrEqual': return strVal >= strFilter;
-                        case 'lessThan': return strVal < strFilter;
-                        case 'lessThanOrEqual': return strVal <= strFilter;
-                        case 'between': return strVal > strFilter && strVal < strFilter;
-                        case 'notBetween': return strVal < strFilter || strVal > strFilter;
-                        case 'isEmpty': return !strVal;
-                        case 'isNotEmpty': return !!strVal;
-                        case 'startsWith': return strVal.startsWith(strFilter);
-                        case 'endsWith': return strVal.endsWith(strFilter);
-                        case 'isAnyOf': return (Array.isArray(value) && value.includes(strVal));
-                        case 'isNoneOf': return (Array.isArray(value) && !value.includes(strVal));
-                        case 'startsWithAnyOf': return (Array.isArray(value) && value.some((str) => strVal.startsWith(str)));
-                        case 'endsWithAnyOf': return (Array.isArray(value) && value.some((str) => strVal.endsWith(str)));
-                        case 'is': return strVal === strFilter;
-                        case 'not': return strVal !== strFilter;
-                        case 'isNotAnyOf': return (Array.isArray(value) && !value.includes(strVal));
-                        case 'isNotNoneOf': return (Array.isArray(value) && value.includes(strVal));
-                        case 'isNot': return strVal !== strFilter;
-                        case 'isNotBetween': return strVal < strFilter || strVal > strFilter;
-                        case 'isNotOneOf': return (Array.isArray(value) && !value.includes(strVal));
-                        default: return true;
-                    }
-                });
-            });
+            let filteredRows = allMembers;
 
-            if (filterModel.quickFilterValues?.length) {
+            if (searchText.trim()) {
+                const lowerSearch = searchText.toLowerCase();
                 filteredRows = filteredRows.filter((member) =>
-                    filterModel.quickFilterValues!.some((filterValue) => {
-                        const v = filterValue.toLowerCase();
-                        return Object.values(member).some((val) =>
-                            String(val).toLowerCase().includes(v),
-                        );
-                    })
+                    Object.values(member).some((value) =>
+                        String(value).toLowerCase().includes(lowerSearch)
+                    )
                 );
             }
-
-            // ✅ Sorting berdasarkan sortModel
+            if (selectedGender.length > 0) {
+                filteredRows = filteredRows.filter((member) =>
+                    selectedGender.includes(member.gender)
+                );
+            }
+            if (selectedLevel.length > 0) {
+                filteredRows = filteredRows.filter((member) =>
+                    selectedLevel.includes(member.level)
+                );
+            }
+            if (selectedMarriageStatus.length > 0) {
+                filteredRows = filteredRows.filter((member) =>
+                    selectedMarriageStatus.includes(member.marriage_status)
+                );
+            }
             let sortedRows = [...filteredRows];
             if (sortModel.length > 0) {
                 const { field, sort } = sortModel[0];
@@ -204,7 +120,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     return 0;
                 });
             }
-
             const pagedRows = sortedRows.slice(start, end).map((member) => ({
                 ...member,
                 id: member.uuid,
@@ -217,23 +132,112 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         } catch (listDataError) {
             setError(listDataError as Error);
         }
-    }, [paginationModel, sortModel, filterModel, allMembers]);
-
-    React.useEffect(() => {
-        loadData();
-    }, [loadData]);
+    }, [paginationModel, sortModel, allMembers, searchText, selectedGender, selectedLevel]);
 
     React.useEffect(() => {
         setAllMembers(members);
     }, [members]);
 
+    React.useEffect(() => {
+        loadData();
+    }, [loadData]);
+    const highlightMatch = (text: string, search: string) => {
+        if (!search) return text;
+
+        const regex = new RegExp(`(${search})`, 'gi');
+        const parts = text.split(regex);
+
+        return (
+            <>
+                {parts.map((part, index) =>
+                    part.toLowerCase() === search.toLowerCase() ? (
+                        <mark key={index}>{part}</mark>
+                    ) : (
+                        <span key={index}>{part}</span>
+                    )
+                )}
+            </>
+        );
+    };
+
+    const handleExportExcel = () => {
+        // Filter info
+        const filterInfo = [
+            ['Filter yang Aktif:'],
+            [`Jenis Kelamin: ${selectedGender.length > 0 ? selectedGender.join(', ') : 'Semua'}`],
+            [`Jenjang Pendidikan: ${selectedLevel.length > 0 ? selectedLevel.join(', ') : 'Semua'}`],
+            [`Status Pernikahan: ${selectedMarriageStatus.length > 0 ? selectedMarriageStatus.join(', ') : 'Semua'}`],
+            [], // Kosongkan baris sebelum header tabel
+        ];
+
+        // Susun data yang akan diekspor
+        const dataToExport = allMembers
+            .filter((member) => {
+                // Terapkan filter sama seperti di loadData()
+                if (
+                    (selectedGender.length > 0 && !selectedGender.includes(member.gender)) ||
+                    (selectedLevel.length > 0 && !selectedLevel.includes(member.level)) ||
+                    (selectedMarriageStatus.length > 0 && !selectedMarriageStatus.includes(member.marriage_status))
+                ) {
+                    return false;
+                }
+
+                if (searchText.trim()) {
+                    const lowerSearch = searchText.toLowerCase();
+                    return Object.values(member).some((value) =>
+                        String(value).toLowerCase().includes(lowerSearch)
+                    );
+                }
+
+                return true;
+            }).map((row) => ({
+                'Nama Lengkap': row.name,
+                'Jenjang': row.level,
+                'Jenis Kelamin': row.gender,
+                'Umur': row.age,
+                'Tanggal Lahir': row.date_of_birth
+                    ? dayjs(row.date_of_birth).format('DD MMMM YYYY')
+                    : '',
+                'Status Pernikahan': row.marriage_status,
+            }));
+
+        const header = Object.keys(dataToExport[0] || {});
+        const dataWithHeader = [header, ...dataToExport.map(row => Object.values(row))];
+        const fullData = [...filterInfo, ...dataWithHeader];
+        const worksheet = XLSX.utils.aoa_to_sheet(fullData);
+
+        worksheet['!cols'] = [
+            { wch: 30 }, // Nama Lengkap
+            { wch: 15 }, // Jenjang Pendidikan
+            { wch: 15 }, // Jenis Kelamin
+            { wch: 10 }, // Umur
+            { wch: 20 }, // Tanggal Lahir
+            { wch: 20 }, // Status Pernikahan
+        ];
+
+        // Buat workbook
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Member');
+
+        // Simpan sebagai file Excel
+        const excelBuffer = XLSX.write(workbook, {
+            bookType: 'xlsx',
+            type: 'array',
+        });
+        const blob = new Blob([excelBuffer], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        saveAs(blob, 'Data_Jamaah_Kelompok_1.xlsx');
+    };
+
+
     const handleRowClick = React.useCallback<GridEventListener<'rowClick'>>(
         ({ row }) => {
             verifyPasswordAndRun('superadmin354', () => {
                 navigate(`/members/${row.uuid}`);
-            })
+            });
         },
-        [navigate],
+        [navigate]
     );
 
     const handleCreateClick = React.useCallback(() => {
@@ -248,7 +252,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 navigate(`/members/${member.uuid}/edit`);
             });
         },
-        [navigate],
+        [navigate]
     );
 
     const handleRowDelete = React.useCallback(
@@ -283,7 +287,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 }
             });
         },
-        [dialogs, notifications, loadData],
+        [dialogs, notifications, loadData]
     );
 
     const verifyPasswordAndRun = (expectedPassword: string, action: () => void) => {
@@ -309,12 +313,14 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         }
     };
 
-    const initialState = React.useMemo(
-        () => ({
-            pagination: { paginationModel: { pageSize: INITIAL_PAGE_SIZE } },
-        }),
-        [],
-    );
+    const handleResetFilters = () => {
+        setSelectedGender([]);
+        setSelectedLevel([]);
+        setSelectedMarriageStatus([]);
+        setPaginationModel((prev) => ({ ...prev, page: 0 }));
+        setSearchText('');
+        loadData();
+    };
 
     const columns = React.useMemo<GridColDef[]>(
         () => [
@@ -323,7 +329,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 headerName: 'NAMA',
                 width: 200,
                 headerAlign: 'center',
-                filterable: true,
+                renderCell: (params) => highlightMatch(params.row.name, searchText),
             },
             {
                 field: 'level',
@@ -331,7 +337,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 width: 140,
                 align: 'center',
                 headerAlign: 'center',
-                filterable: true,
+                renderCell: (params) => highlightMatch(params.row.level, searchText),
             },
             {
                 field: 'gender',
@@ -339,14 +345,14 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 width: 140,
                 align: 'center',
                 headerAlign: 'center',
-                filterable: true,
+                renderCell: (params) => highlightMatch(params.row.gender, searchText),
             },
             {
                 field: 'age',
                 headerName: 'UMUR',
                 align: 'center',
                 headerAlign: 'center',
-                filterable: true,
+                renderCell: (params) => highlightMatch(params.row.age, searchText),
             },
             {
                 field: 'date_of_birth',
@@ -355,25 +361,26 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 valueGetter: (value) => value && new Date(value),
                 valueFormatter: (value) => {
                     if (!value) return '';
-                    return dayjs(value).format('DD MMMM YYYY')
+                    return dayjs(value).format('DD MMMM YYYY');
                 },
                 width: 140,
                 align: 'center',
                 headerAlign: 'center',
-                filterable: true,
+                renderCell: (params) => highlightMatch(params.row.date_of_birth, searchText),
             },
             {
                 field: 'marriage_status',
                 headerName: 'STATUS PERNIKAHAN',
                 type: 'singleSelect',
                 valueOptions: ['Belum Menikah', 'Menikah', 'Janda', 'Duda'],
-                width: 160,
+                width: 180,
                 align: 'center',
                 headerAlign: 'center',
-                filterable: true,
+                renderCell: (params) => highlightMatch(params.row.marriage_status, searchText),
             },
             {
                 field: 'actions',
+                headerName: 'ACTIONS',
                 type: 'actions',
                 width: 100,
                 align: 'center',
@@ -394,14 +401,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 ],
             },
         ],
-        [handleRowEdit, handleRowDelete],
+        [handleRowEdit, handleRowDelete]
     );
-
-    const pageTitle = 'Members';
 
     return (
         <PageContainer
-            title={pageTitle}
+            title="Members"
             actions={
                 <Stack direction="row" alignItems="center" spacing={1}>
                     <Tooltip title="Reload data" placement="right" enterDelay={1000}>
@@ -422,32 +427,53 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             }
         >
             <Box sx={{ flex: 1, width: '100%', position: 'relative' }}>
+                <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" >
+                    <TextField
+                        label="Cari Apapun"
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        size="small"
+                        fullWidth
+                    />
+                </Stack>
                 {error ? (
-                    <Box sx={{ flexGrow: 1 }}>
-                        <Alert severity="error">{error.message}</Alert>
-                    </Box>
+                    <Alert severity="error">{error.message}</Alert>
                 ) : (
                     <DataGrid
                         rows={rowsState.rows}
                         rowCount={rowsState.rowCount}
                         columns={columns}
                         pagination
-                        sortingMode="server"
-                        filterMode="server"
-                        paginationMode="server"
                         paginationModel={paginationModel}
-                        onPaginationModelChange={handlePaginationModelChange}
+                        onPaginationModelChange={setPaginationModel}
+                        sortingMode="client"
                         sortModel={sortModel}
-                        onSortModelChange={handleSortModelChange}
-                        filterModel={filterModel}
-                        onFilterModelChange={handleFilterModelChange}
+                        onSortModelChange={setSortModel}
                         disableRowSelectionOnClick
-                        disableMultipleRowSelection={false}
                         onRowClick={handleRowClick}
                         loading={loading}
-                        initialState={initialState}
-                        showToolbar
-                        pageSizeOptions={[15, INITIAL_PAGE_SIZE, 50, 100]}
+                        slots={{
+                            toolbar: GridToolbar,
+                            pagination: () => (
+                                <TablePagination
+                                    component="div"
+                                    count={rowsState.rowCount}
+                                    page={paginationModel.page}
+                                    onPageChange={(_, newPage) =>
+                                        setPaginationModel((prev) => ({ ...prev, page: newPage }))
+                                    }
+                                    rowsPerPage={paginationModel.pageSize}
+                                    onRowsPerPageChange={(e) =>
+                                        setPaginationModel({
+                                            page: 0,
+                                            pageSize: parseInt(e.target.value, 10),
+                                        })
+                                    }
+                                    rowsPerPageOptions={[15, 30, 50, 100]}
+                                    labelRowsPerPage="Show Data"
+                                />
+                            ),
+                        }}
                         sx={{
                             [`& .${gridClasses.columnHeader}, & .${gridClasses.cell}`]: {
                                 outline: 'transparent',
@@ -459,39 +485,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 cursor: 'pointer',
                             },
                         }}
-                        slotProps={{
-                            loadingOverlay: {
-                                variant: 'circular-progress',
-                                noRowsVariant: 'circular-progress',
-                            },
-                            baseIconButton: {
-                                size: 'small',
-                            },
-                        }}
-                        slots={{
-                            pagination: () => (
-                                <TablePagination
-                                    component="div"
-                                    count={rowsState.rowCount}
-                                    page={paginationModel.page}
-                                    onPageChange={(_, newPage) => {
-                                        handlePaginationModelChange({ ...paginationModel, page: newPage });
-                                    }}
-                                    rowsPerPage={paginationModel.pageSize}
-                                    onRowsPerPageChange={(e) => {
-                                        handlePaginationModelChange({
-                                            ...paginationModel,
-                                            page: 0,
-                                            pageSize: parseInt(e.target.value, 10),
-                                        });
-                                    }}
-                                    rowsPerPageOptions={[15, 30, 50, 100]}
-                                    labelRowsPerPage="Show Data"
-                                />
-                            ),
-                            toolbar: GridToolbar,
-                        }}
-
                     />
                 )}
             </Box>
@@ -521,7 +514,107 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     </Stack>
                 </Box>
             </Dialog>
+            <Dialog open={filterDialogOpen} onClose={() => setFilterDialogOpen(false)} maxWidth="sm" fullWidth>
+                <Box p={3}>
+                    <Typography variant="h6" mb={2}>Filter Data Member</Typography>
+                    <Stack spacing={2}>
+                        <TextField
+                            label="Jenis Kelamin"
+                            size="small"
+                            select
+                            SelectProps={{ multiple: true, renderValue: (selected) => (selected as string[]).join(', ') }}
+                            value={selectedGender}
+                            onChange={(e) => {
+                                const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                                setSelectedGender(value);
+                            }}
+                        >
+                            {['Laki-laki', 'Perempuan'].map((gender) => (
+                                <MenuItem key={gender} value={gender}>
+                                    <Checkbox checked={selectedGender.includes(gender)} />
+                                    <ListItemText primary={gender} />
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            label="Jenjang"
+                            size="small"
+                            select
+                            SelectProps={{ multiple: true, renderValue: (selected) => (selected as string[]).join(', ') }}
+                            value={selectedLevel}
+                            onChange={(e) => {
+                                const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                                setSelectedLevel(value);
+                            }}
+                        >
+                            {Array.from(new Set(members.map((m) => m.level))).map((level) => (
+                                <MenuItem key={level} value={level}>
+                                    <Checkbox checked={selectedLevel.includes(level)} />
+                                    <ListItemText primary={level} />
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                        <TextField
+                            label="Status Pernikahan"
+                            size="small"
+                            select
+                            SelectProps={{ multiple: true, renderValue: (selected) => (selected as string[]).join(', ') }}
+                            value={selectedMarriageStatus}
+                            onChange={(e) => {
+                                const value = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                                setSelectedMarriageStatus(value);
+                            }}
+                        >
+                            {['Belum Menikah', 'Menikah', 'Janda', 'Duda'].map((status) => (
+                                <MenuItem key={status} value={status}>
+                                    <Checkbox checked={selectedMarriageStatus.includes(status)} />
+                                    <ListItemText primary={status} />
+                                </MenuItem>
+                            ))}
+                        </TextField>
+                    </Stack>
 
+                    <Stack direction="row" justifyContent="flex-end" spacing={2} mt={3}>
+                        <Button onClick={handleResetFilters} color="error">
+                            Reset Filter
+                        </Button>
+                        <Button onClick={() => setFilterDialogOpen(false)}>Tutup</Button>
+                        <Button
+                            variant="contained"
+                            onClick={() => {
+                                setPaginationModel((prev) => ({ ...prev, page: 0 }));
+                                loadData();
+                                setFilterDialogOpen(false);
+                            }}
+                        >
+                            Terapkan
+                        </Button>
+                    </Stack>
+                </Box>
+            </Dialog>
+            <Box
+                sx={{
+                    position: 'fixed',
+                    bottom: 16,
+                    right: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1,
+                    zIndex: 1300,
+                }}
+            >
+                <Tooltip title="Filter Data" arrow>
+                    <Fab color="secondary" onClick={() => setFilterDialogOpen(true)}>
+                        <GridFilterListIcon />
+                    </Fab>
+                </Tooltip>
+
+                <Tooltip title="Export Excel" arrow>
+                    <Fab color="primary" onClick={handleExportExcel}>
+                        <DownloadIcon />
+                    </Fab>
+                </Tooltip>
+            </Box>
 
         </PageContainer>
     );
