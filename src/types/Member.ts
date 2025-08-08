@@ -17,6 +17,11 @@ export interface Member {
     created_at: string;
 }
 
+export interface Familys {
+    id: number; // Ganti dari id: number
+    name: string;
+}
+
 export function getMembersStore(): Member[] {
     const stringifiedEmployees = localStorage.getItem('members-store');
     return stringifiedEmployees ? JSON.parse(stringifiedEmployees) : [];

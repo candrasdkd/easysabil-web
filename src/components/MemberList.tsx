@@ -26,7 +26,7 @@ import {
     type Member,
 } from '../types/Member';
 import PageContainer from './PageContainer';
-import { CircularProgress } from '@mui/material';
+import { CircularProgress, TablePagination } from '@mui/material';
 import dayjs from 'dayjs';
 
 const INITIAL_PAGE_SIZE = 30;
@@ -137,25 +137,16 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             let filteredRows = allMembers.filter((member) => {
                 return filterModel.items.every((filterItem) => {
                     const { field, value, operator } = filterItem;
-
                     const targetValue = member[field as keyof Member];
-
                     if (!value || !operator) return true;
-
                     const strVal = String(targetValue ?? '').toLowerCase();
                     const strFilter = String(value).toLowerCase();
-
                     switch (operator) {
-                        case 'contains':
-                            return strVal.includes(strFilter);
-                        case 'equals':
-                            return strVal === strFilter;
-                        case 'startsWith':
-                            return strVal.startsWith(strFilter);
-                        case 'endsWith':
-                            return strVal.endsWith(strFilter);
-                        default:
-                            return true;
+                        case 'contains': return strVal.includes(strFilter);
+                        case 'equals': return strVal === strFilter;
+                        case 'startsWith': return strVal.startsWith(strFilter);
+                        case 'endsWith': return strVal.endsWith(strFilter);
+                        default: return true;
                     }
                 });
             });
@@ -171,9 +162,20 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 );
             }
 
-            const sortedRows = filteredRows.sort((a, b) =>
-                a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }),
-            );
+            // ✅ Sorting berdasarkan sortModel
+            let sortedRows = [...filteredRows];
+            if (sortModel.length > 0) {
+                const { field, sort } = sortModel[0];
+                sortedRows.sort((a, b) => {
+                    const aValue = a[field as keyof Member];
+                    const bValue = b[field as keyof Member];
+                    const aStr = String(aValue ?? '').toLowerCase();
+                    const bStr = String(bValue ?? '').toLowerCase();
+                    if (aStr < bStr) return sort === 'asc' ? -1 : 1;
+                    if (aStr > bStr) return sort === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
 
             const pagedRows = sortedRows.slice(start, end).map((member) => ({
                 ...member,
@@ -188,8 +190,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             setError(listDataError as Error);
         }
     }, [paginationModel, sortModel, filterModel, allMembers]);
-
-
 
     React.useEffect(() => {
         loadData();
@@ -421,6 +421,29 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 size: 'small',
                             },
                         }}
+                        slots={{
+                            pagination: () => (
+                                <TablePagination
+                                    component="div"
+                                    count={rowsState.rowCount}
+                                    page={paginationModel.page}
+                                    onPageChange={(_, newPage) => {
+                                        handlePaginationModelChange({ ...paginationModel, page: newPage });
+                                    }}
+                                    rowsPerPage={paginationModel.pageSize}
+                                    onRowsPerPageChange={(e) => {
+                                        handlePaginationModelChange({
+                                            ...paginationModel,
+                                            page: 0,
+                                            pageSize: parseInt(e.target.value, 10),
+                                        });
+                                    }}
+                                    rowsPerPageOptions={[15, 30, 50, 100]}
+                                    labelRowsPerPage="Show Data"
+                                />
+                            ),
+                        }}
+
                     />
                 )}
             </Box>
