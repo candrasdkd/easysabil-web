@@ -31,10 +31,14 @@ interface DashboardProps {
 
 export default function Dashboard({ loading, members, listFamily }: DashboardProps) {
     const theme = useTheme();
-    const total = members?.length || 0;
-    const totalKepalaKeluarga = listFamily?.length - 1 || 0;
+    const total = members.filter(
+        m => m.is_active && !m.is_educate
+    ).length || 0;
+    const totalKepalaKeluarga = listFamily?.length - 2 || 0; //rantuan dan binaan dikurangi
 
-    const statsByLevelAndGender = members.reduce((acc, member) => {
+    const statsByLevelAndGender = members.filter(
+        m => m.is_active && !m.is_educate
+    ).reduce((acc, member) => {
         const level = member.level || 'Unknown';
         const gender = member.gender || 'Unknown';
 

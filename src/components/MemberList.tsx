@@ -13,7 +13,13 @@ import {
     TablePagination,
     Checkbox,
     ListItemText,
-    Fab
+    Fab,
+    useTheme,
+    useMediaQuery,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    CircularProgress
 } from '@mui/material';
 import {
     DataGrid,
@@ -32,6 +38,7 @@ import AddIcon from '@mui/icons-material/Add';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LockIcon from '@mui/icons-material/Lock';
 import dayjs from 'dayjs';
 import PageContainer from './PageContainer';
 import { useDialogs } from '../hooks/useDialogs/useDialogs';
@@ -39,7 +46,8 @@ import useNotifications from '../hooks/useNotifications/useNotifications';
 import { type Member } from '../types/Member';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-
+import 'dayjs/locale/id'; // import bahasa Indonesia
+dayjs.locale('id');
 const INITIAL_PAGE_SIZE = 30;
 
 type Props = {
@@ -57,9 +65,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [selectedLevel, setSelectedLevel] = React.useState<string[]>([]);
     const [selectedMarriageStatus, setSelectedMarriageStatus] = React.useState<string[]>([]);
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
-    const [allMembers, setAllMembers] = React.useState<Member[]>(members);
+    const [allMembers, setAllMembers] = React.useState<Member[]>(members.filter((member) => !member.is_active));
     const [openPasswordDialog, setOpenPasswordDialog] = React.useState(false);
     const [password, setPassword] = React.useState('');
+    const [loadingPassword, setLoadingPassword] = React.useState(false);
     const [requiredPassword, setRequiredPassword] = React.useState<string | null>(null);
     const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
     const [error, setError] = React.useState<Error | null>(null);
@@ -75,6 +84,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         rows: [],
         rowCount: 0,
     });
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
     const loadData = React.useCallback(() => {
         setError(null);
@@ -83,13 +94,22 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             const end = start + paginationModel.pageSize;
 
             let filteredRows = allMembers;
-
             if (searchText.trim()) {
                 const lowerSearch = searchText.toLowerCase();
                 filteredRows = filteredRows.filter((member) =>
-                    Object.values(member).some((value) =>
-                        String(value).toLowerCase().includes(lowerSearch)
-                    )
+                    Object.entries(member).some(([key, value]) => {
+                        if (!value) return false;
+                        if (key === 'family_name') {
+                            return false; // lanjut cek kolom lain
+                        }
+
+                        let stringValue = String(value);
+                        // Kalau kolomnya date_of_birth → format ke Indo
+                        if (key === 'date_of_birth') {
+                            stringValue = dayjs(value).format('DD MMMM YYYY');
+                        }
+                        return stringValue.toLowerCase().includes(lowerSearch);
+                    })
                 );
             }
             if (selectedGender.length > 0) {
@@ -233,24 +253,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     const handleRowClick = React.useCallback<GridEventListener<'rowClick'>>(
         ({ row }) => {
-            verifyPasswordAndRun('superadmin354', () => {
-                navigate(`/members/${row.uuid}`);
-            });
+            navigate(`/members/${row.uuid}`);
         },
         [navigate]
     );
 
     const handleCreateClick = React.useCallback(() => {
-        verifyPasswordAndRun('admin354', () => {
-            navigate('/members/new');
-        });
+        navigate('/members/new');
     }, [navigate]);
 
     const handleRowEdit = React.useCallback(
         (member: Member) => () => {
-            verifyPasswordAndRun('superadmin354', () => {
-                navigate(`/members/${member.uuid}/edit`);
-            });
+            navigate(`/members/${member.uuid}/edit`);
         },
         [navigate]
     );
@@ -295,22 +309,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         setPendingAction(() => action);
         setPassword('');
         setOpenPasswordDialog(true);
-    };
-
-    const handlePasswordConfirm = () => {
-        if (password === requiredPassword) {
-            setOpenPasswordDialog(false);
-            setPassword('');
-            setRequiredPassword(null);
-            if (pendingAction) {
-                pendingAction();
-            }
-        } else {
-            notifications.show('Password Salah', {
-                severity: 'error',
-                autoHideDuration: 3000,
-            });
-        }
     };
 
     const handleResetFilters = () => {
@@ -366,7 +364,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 width: 140,
                 align: 'center',
                 headerAlign: 'center',
-                renderCell: (params) => highlightMatch(params.row.date_of_birth, searchText),
+                renderCell: (params) => highlightMatch(
+                    dayjs(params.row.date_of_birth).format('DD MMMM YYYY'),
+                    searchText
+                ),
             },
             {
                 field: 'marriage_status',
@@ -403,6 +404,28 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         ],
         [handleRowEdit, handleRowDelete]
     );
+
+    const handlePasswordSubmit = () => {
+        if (!password.trim()) {
+            notifications.show('Password tidak boleh kosong', { severity: 'warning' });
+            return;
+        }
+        setLoadingPassword(true);
+        setTimeout(() => {
+            if (password === requiredPassword) {
+                setOpenPasswordDialog(false);
+                if (pendingAction) {
+                    pendingAction();
+                }
+            } else {
+                notifications.show('Password salah', {
+                    severity: 'error',
+                    autoHideDuration: 3000,
+                });
+            }
+            setLoadingPassword(false);
+        }, 800); // delay kecil untuk efek loading
+    };
 
     return (
         <PageContainer
@@ -446,7 +469,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         pagination
                         paginationModel={paginationModel}
                         onPaginationModelChange={setPaginationModel}
-                        sortingMode="client"
+                        sortingMode="server"
                         sortModel={sortModel}
                         onSortModelChange={setSortModel}
                         disableRowSelectionOnClick
@@ -488,32 +511,50 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     />
                 )}
             </Box>
-            <Dialog open={openPasswordDialog} onClose={() => setOpenPasswordDialog(false)}>
-                <Box p={3} minWidth={300}>
-                    <Typography variant="h6" mb={2}>
+
+            <Dialog open={openPasswordDialog} onClose={() => setOpenPasswordDialog(false)} fullWidth maxWidth="xs">
+                <DialogTitle>
+                    <Box display="flex" alignItems="center" gap={1}>
+                        <LockIcon color="primary" />
                         Masukkan Password
+                    </Box>
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" mb={2}>
+                        Untuk melanjutkan proses, silakan masukkan password keamanan.
                     </Typography>
                     <TextField
-                        type="password"
-                        label="Password"
                         fullWidth
-                        margin="normal"
+                        type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handlePasswordConfirm();
-                            }
-                        }}
+                        placeholder="Password"
+                        autoFocus
+                        onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
                     />
-                    <Stack direction="row" justifyContent="flex-end" spacing={2} mt={2}>
-                        <Button onClick={() => setOpenPasswordDialog(false)}>Batal</Button>
-                        <Button variant="contained" onClick={handlePasswordConfirm}>
-                            Konfirmasi
-                        </Button>
-                    </Stack>
-                </Box>
+                </DialogContent>
+                <DialogActions sx={{ display: 'flex', gap: 1, px: 3, pb: 2 }}>
+                    <Button
+                        onClick={() => setOpenPasswordDialog(false)}
+                        variant="outlined"
+                        color="inherit"
+                        fullWidth
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handlePasswordSubmit}
+                        variant="contained"
+                        color="primary"
+                        disabled={loadingPassword}
+                        fullWidth
+                        startIcon={loadingPassword ? <CircularProgress size={18} /> : null}
+                    >
+                        {loadingPassword ? 'Memeriksa...' : 'Konfirmasi'}
+                    </Button>
+                </DialogActions>
             </Dialog>
+
             <Dialog open={filterDialogOpen} onClose={() => setFilterDialogOpen(false)} maxWidth="sm" fullWidth>
                 <Box p={3}>
                     <Typography variant="h6" mb={2}>Filter Data Member</Typography>
@@ -604,14 +645,30 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 }}
             >
                 <Tooltip title="Filter Data" arrow>
-                    <Fab color="secondary" onClick={() => setFilterDialogOpen(true)}>
-                        <GridFilterListIcon />
+                    <Fab
+                        color="secondary"
+                        onClick={() => setFilterDialogOpen(true)}
+                        size={isMobile ? 'small' : 'medium'} // <-- kecil kalau mobile
+                        sx={{
+                            width: isMobile ? 40 : 56,  // bisa custom lebar
+                            height: isMobile ? 40 : 56,
+                        }}
+                    >
+                        <GridFilterListIcon fontSize={isMobile ? 'small' : 'medium'} />
                     </Fab>
                 </Tooltip>
 
                 <Tooltip title="Export Excel" arrow>
-                    <Fab color="primary" onClick={handleExportExcel}>
-                        <DownloadIcon />
+                    <Fab
+                        color="primary"
+                        onClick={handleExportExcel}
+                        size={isMobile ? 'small' : 'medium'}
+                        sx={{
+                            width: isMobile ? 40 : 56,
+                            height: isMobile ? 40 : 56,
+                        }}
+                    >
+                        <DownloadIcon fontSize={isMobile ? 'small' : 'medium'} />
                     </Fab>
                 </Tooltip>
             </Box>

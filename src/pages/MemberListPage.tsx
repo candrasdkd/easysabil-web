@@ -7,7 +7,10 @@ export default function MembersListPage() {
     const [members, setMembers] = useState<Member[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const fetchMembers = async () => {
+        setIsLoading(true);
         const { data, error } = await supabase.from('list_sensus').select('*')
+            .order('name', { ascending: true });
+
         if (!error && data) {
             setMembers(data)
             setMembersStore(data)

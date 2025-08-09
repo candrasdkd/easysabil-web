@@ -1,228 +1,218 @@
-import * as React from 'react';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import FormControl from '@mui/material/FormControl';
-import FormGroup from '@mui/material/FormGroup';
-import Grid from '@mui/material/Grid';
-import InputLabel from '@mui/material/InputLabel';
-import MenuItem from '@mui/material/MenuItem';
-import Select, { type SelectChangeEvent, type SelectProps } from '@mui/material/Select';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
+import { Autocomplete, Box, Button, FormControl, FormControlLabel, FormGroup, Grid, InputLabel, MenuItem, Select, Stack, Switch, TextField } from "@mui/material";
+import React from "react";
+import { useNavigate } from "react-router";
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useNavigate } from 'react-router';
-import dayjs, { Dayjs } from 'dayjs';
-import type { Member } from '../types/Member';
+import dayjs from "dayjs";
+import type { MemberFormProps } from "../types/Member";
 
-export interface EmployeeFormState {
-    values: Partial<Omit<Member, 'id'>>;
-    errors: Partial<Record<keyof EmployeeFormState['values'], string>>;
-}
-
-export type FormFieldValue = string | string[] | number | boolean | File | null;
-
-export interface EmployeeFormProps {
-    formState: EmployeeFormState;
-    onFieldChange: (
-        name: keyof EmployeeFormState['values'],
-        value: FormFieldValue,
-    ) => void;
-    onSubmit: (formValues: Partial<EmployeeFormState['values']>) => Promise<void>;
-    onReset?: (formValues: Partial<EmployeeFormState['values']>) => void;
-    submitButtonLabel: string;
-    backButtonPath?: string;
-}
-
-export default function MemberForm(props: EmployeeFormProps) {
+export default function MemberForm(props: MemberFormProps) {
     const {
+        date,
+        setDate,
+        keluargaOptions,
+        loading,
+        uploading,
         formState,
         onFieldChange,
         onSubmit,
         onReset,
         submitButtonLabel,
-        backButtonPath,
+        backButtonPath
     } = props;
-
-    const formValues = formState.values;
-    const formErrors = formState.errors;
-
+    const { values: formValues, errors: formErrors } = formState;
     const navigate = useNavigate();
-
-    const [isSubmitting, setIsSubmitting] = React.useState(false);
-
-    const handleSubmit = React.useCallback(
-        async (event: React.FormEvent<HTMLFormElement>) => {
-            event.preventDefault();
-
-            setIsSubmitting(true);
-            try {
-                await onSubmit(formValues);
-            } finally {
-                setIsSubmitting(false);
+    React.useEffect(() => {
+        if (date) {
+            const dobDayjs = dayjs(date);
+            if (dobDayjs.isValid()) {
+                onFieldChange('age', `${dayjs().diff(dobDayjs, 'year')} Tahun`);
             }
-        },
-        [formValues, onSubmit],
-    );
-
-    const handleTextFieldChange = React.useCallback(
-        (event: React.ChangeEvent<HTMLInputElement>) => {
-            onFieldChange(
-                event.target.name as keyof EmployeeFormState['values'],
-                event.target.value,
-            );
-        },
-        [onFieldChange],
-    );
-
-    const handleNumberFieldChange = React.useCallback(
-        (event: React.ChangeEvent<HTMLInputElement>) => {
-            onFieldChange(
-                event.target.name as keyof EmployeeFormState['values'],
-                Number(event.target.value),
-            );
-        },
-        [onFieldChange],
-    );
-
-    const handleDateFieldChange = React.useCallback(
-        (fieldName: keyof EmployeeFormState['values']) => (value: Dayjs | null) => {
-            if (value?.isValid()) {
-                onFieldChange(fieldName, value.toISOString() ?? null);
-            } else if (formValues[fieldName]) {
-                onFieldChange(fieldName, null);
-            }
-        },
-        [formValues, onFieldChange],
-    );
-
-    const handleSelectFieldChange = React.useCallback(
-        (event: SelectChangeEvent) => {
-            onFieldChange(
-                event.target.name as keyof EmployeeFormState['values'],
-                event.target.value,
-            );
-        },
-        [onFieldChange],
-    );
-
-    const handleReset = React.useCallback(() => {
-        if (onReset) {
-            onReset(formValues);
         }
-    }, [formValues, onReset]);
+    }, [date]);
 
-    const handleBack = React.useCallback(() => {
+
+    const handleBack = () => {
         navigate(backButtonPath ?? '/members');
-    }, [navigate, backButtonPath]);
+    };
 
     return (
         <Box
             component="form"
-            onSubmit={handleSubmit}
+            onSubmit={onSubmit}
             noValidate
             autoComplete="off"
-            onReset={handleReset}
+            onReset={() => onReset?.(formValues)}
             sx={{ width: '100%' }}
         >
             <FormGroup>
-                <Grid container spacing={2} sx={{ mb: 2, width: '100%' }}>
-                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex' }}>
+                <Grid container spacing={2} sx={{ mb: 4 }}>
+                    {/* Dropdown Keluarga (Supabase) */}
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}>
+                        <FormControl fullWidth error={!!formErrors.keluarga}>
+                            <Autocomplete
+                                loading={true}
+                                disabled={uploading || loading}
+                                fullWidth
+                                options={keluargaOptions}
+                                getOptionLabel={(option) => option.name}
+                                value={
+                                    keluargaOptions.find((opt) => opt.id === Number(formValues.keluarga)) || null
+                                }
+                                onChange={(_, newValue) =>
+                                    onFieldChange("keluarga", newValue ? newValue.id : "")
+                                }
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="Pilih dari Keluarga Mana"
+                                        error={!!formErrors.keluarga}
+                                        helperText={formErrors.keluarga ?? " "}
+                                    />
+                                )}
+                            />
+                        </FormControl>
+                    </Grid>
+
+                    {/* Input Nama */}
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}>
                         <TextField
+                            disabled={uploading}
                             value={formValues.name ?? ''}
-                            onChange={handleTextFieldChange}
+                            onChange={(e) => onFieldChange('name', e.target.value)}
                             name="name"
-                            label="Name"
+                            label="Masukkan Nama"
                             error={!!formErrors.name}
                             helperText={formErrors.name ?? ' '}
                             fullWidth
                         />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex' }}>
-                        <TextField
-                            type="number"
-                            value={formValues.age ?? ''}
-                            onChange={handleNumberFieldChange}
-                            name="age"
-                            label="Age"
-                            error={!!formErrors.age}
-                            helperText={formErrors.age ?? ' '}
-                            fullWidth
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex' }}>
+
+                    {/* Input Tanggal Lahir */}
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}>
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                             <DatePicker
-                                value={formValues.date_of_birth ? dayjs(formValues.date_of_birth) : null}
-                                onChange={handleDateFieldChange('date_of_birth')}
-                                name="date_of_birth"
-                                label="Date of Birth"
+                                disabled={uploading}
+                                value={dayjs(date)}
+                                format="DD MMMM YYYY"
+                                onChange={(value) => setDate(value)}
+                                label="Pilih Tanggal Lahir"
                                 slotProps={{
                                     textField: {
                                         error: !!formErrors.date_of_birth,
                                         helperText: formErrors.date_of_birth ?? ' ',
-                                        fullWidth: true,
-                                    },
+                                        fullWidth: true
+                                    }
                                 }}
                             />
+
                         </LocalizationProvider>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex' }}>
-                        <FormControl error={!!formErrors.marriage_status} fullWidth>
-                            <InputLabel id="employee-role-label">Marriage Status</InputLabel>
+
+                    {/* Usia (Disabled) */}
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <TextField
+                            value={formValues.age ?? ''}
+                            label="Usia Akan Otomatis"
+                            disabled
+                            fullWidth
+                        />
+                    </Grid>
+
+                    {/* Dropdown Jenis Kelamin */}
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <FormControl fullWidth error={!!formErrors.gender} disabled={uploading}>
+                            <InputLabel>Pilih Jenis Kelamin</InputLabel>
                             <Select
-                                value={formValues.marriage_status ?? ''}
-                                onChange={handleSelectFieldChange as SelectProps['onChange']}
-                                labelId="employee-role-label"
-                                name="role"
-                                label="Department"
-                                defaultValue=""
-                                fullWidth
+                                value={formValues.gender ?? ''}
+                                onChange={(e) => onFieldChange('gender', e.target.value)}
+                                label="Pilih Jenis Kelamin"
                             >
-                                <MenuItem value="Market">Market</MenuItem>
-                                <MenuItem value="Finance">Finance</MenuItem>
-                                <MenuItem value="Development">Development</MenuItem>
+                                <MenuItem value="Laki-laki">Laki-laki</MenuItem>
+                                <MenuItem value="Perempuan">Perempuan</MenuItem>
                             </Select>
-                            {/* <FormHelperText>{formErrors.role ?? ' '}</FormHelperText> */}
                         </FormControl>
                     </Grid>
-                    {/* <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex' }}>
-                        <FormControl>
-                            <FormControlLabel
-                                name="isFullTime"
-                                control={
-                                    <Checkbox
-                                        size="large"
-                                        checked={formValues.isFullTime ?? false}
-                                        onChange={handleCheckboxFieldChange}
-                                    />
-                                }
-                                label="Full-time"
-                            />
-                            <FormHelperText error={!!formErrors.isFullTime}>
-                                {formErrors.isFullTime ?? ' '}
-                            </FormHelperText>
+
+                    {/* Dropdown Jenjang Pendidikan */}
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <FormControl fullWidth error={!!formErrors.education} disabled={uploading}>
+                            <InputLabel>Pilih Jenjang</InputLabel>
+                            <Select
+                                value={formValues.education ?? ''}
+                                onChange={(e) => onFieldChange('education', e.target.value)}
+                                label="Pilih Jenjang"
+                            >
+                                <MenuItem value="Balita">Balita (0-5 Tahun)</MenuItem>
+                                <MenuItem value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</MenuItem>
+                                <MenuItem value="Pra Remaja">Pra Remaja (12-15 Tahun)</MenuItem>
+                                <MenuItem value="Remaja">Remaja (15-19 Tahun)</MenuItem>
+                                <MenuItem value="Pra Nikah">Pra Nikah (19-30 Tahun)</MenuItem>
+                                <MenuItem value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</MenuItem>
+                                <MenuItem value="Lansia">Lansia (70+ Tahun)</MenuItem>
+                            </Select>
                         </FormControl>
-                    </Grid> */}
+                    </Grid>
+
+                    {/* Dropdown Status Pernikahan */}
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <FormControl fullWidth error={!!formErrors.marriage_status} disabled={uploading}>
+                            <InputLabel>Pilih Status Pernikahan</InputLabel>
+                            <Select
+                                value={formValues.marriage_status ?? ''}
+                                onChange={(e) =>
+                                    onFieldChange('marriage_status', e.target.value)
+                                }
+                                label="Pilih Status Pernikahan"
+                            >
+                                <MenuItem value="Belum Menikah">Belum Menikah</MenuItem>
+                                <MenuItem value="Menikah">Menikah</MenuItem>
+                                <MenuItem value="Janda">Janda</MenuItem>
+                                <MenuItem value="Duda">Duda</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    {/* Switch Sedang Binaan */}
+                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                        <FormControlLabel
+                            disabled={uploading}
+                            control={
+                                <Switch
+                                    checked={formValues.is_educate === true}
+                                    onChange={(e) => onFieldChange('is_educate', e.target.checked)}
+                                    color="primary"
+                                />
+                            }
+                            label="Sedang Binaan?"
+                        />
+                    </Grid>
+
+
                 </Grid>
             </FormGroup>
-            <Stack direction="row" spacing={2} justifyContent="space-between">
+
+            <Stack
+                direction={{ xs: 'row' }}
+                spacing={2}
+                justifyContent="space-between"
+            >
                 <Button
                     variant="contained"
                     startIcon={<ArrowBackIcon />}
                     onClick={handleBack}
+                    disabled={uploading}
                 >
-                    Back
+                    Kembali
                 </Button>
                 <Button
                     type="submit"
                     variant="contained"
                     size="large"
-                    loading={isSubmitting}
+                    disabled={uploading}
                 >
-                    {submitButtonLabel}
+                    {uploading ? 'Menyimpan...' : submitButtonLabel}
                 </Button>
             </Stack>
         </Box>
