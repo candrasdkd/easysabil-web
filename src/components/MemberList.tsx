@@ -591,7 +591,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 sx={{
                     position: 'fixed',
                     bottom: 16,
-                    right: 16,
+                    left: 16,
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 1,
