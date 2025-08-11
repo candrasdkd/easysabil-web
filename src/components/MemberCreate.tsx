@@ -5,7 +5,7 @@ import {
     type FormFieldValue,
     type MemberFormState,
 } from '../types/Member';
-import EmployeeForm from './MemberForm';
+import MemberForm from './MemberCreateForm';
 import PageContainer from './PageContainer';
 import {
     Button,
@@ -166,7 +166,7 @@ export default function MemberCreate() {
         >
             {/* Form hanya muncul kalau password benar */}
             {showForm && (
-                <EmployeeForm
+                <MemberForm
                     date={date}
                     setDate={setDate}
                     loading={loadingKeluarga}

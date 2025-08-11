@@ -130,7 +130,7 @@ export default function MemberForm(props: MemberFormProps) {
                                 onChange={(e) => onFieldChange('gender', e.target.value)}
                                 label="Pilih Jenis Kelamin"
                             >
-                                <MenuItem value="Laki-laki">Laki-laki</MenuItem>
+                                <MenuItem value="Laki - Laki">Laki - Laki</MenuItem>
                                 <MenuItem value="Perempuan">Perempuan</MenuItem>
                             </Select>
                         </FormControl>
