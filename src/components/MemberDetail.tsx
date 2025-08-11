@@ -70,8 +70,8 @@ export default function EmployeeShow() {
         navigate(`/members/${id}/edit`);
     }, [navigate, id]);
 
-    const handleEmployeeDelete = React.useCallback(async () => {
-        verifyPasswordAndRun("admin354", async () => {
+    const handleMemberDelete = React.useCallback(async () => {
+        verifyPasswordAndRun("superadmin354", async () => {
             if (!member) {
                 return;
             }
@@ -276,7 +276,7 @@ export default function EmployeeShow() {
                             variant="contained"
                             color="error"
                             startIcon={<DeleteIcon />}
-                            onClick={handleEmployeeDelete}
+                            onClick={handleMemberDelete}
                         >
                             Delete
                         </Button>
@@ -290,7 +290,7 @@ export default function EmployeeShow() {
         member,
         handleBack,
         handleMemberEdit,
-        handleEmployeeDelete,
+        handleMemberDelete,
     ]);
 
     const pageTitle = member?.family_name === 'Rantau' ? `Dari Perantauan` : `Dari Keluarga ${member ? member.family_name : ''}`;
