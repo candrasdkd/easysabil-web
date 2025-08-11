@@ -54,6 +54,8 @@ export default function MemberEdit() {
         education: '',
         marriage_status: '',
         is_educate: false,
+        is_active: true, // default value
+        is_duafa: false, // default value
     };
 
     const [formState, setFormState] = React.useState<MemberFormState>(() => ({
@@ -68,7 +70,7 @@ export default function MemberEdit() {
             const { data, error } = await supabase
                 .from('list_sensus')
                 .select(
-                    'uuid, name, date_of_birth, gender, level, age, marriage_status, id_family, family_name, is_educate'
+                    'uuid, name, date_of_birth, gender, level, age, marriage_status, id_family, family_name, is_educate, is_active, is_duafa'
                 )
                 .eq('uuid', memberUuid) // ganti ke .eq('id', ...) jika kolom primermu "id"
                 .single();
@@ -95,6 +97,8 @@ export default function MemberEdit() {
                     education: data.level ?? '',
                     marriage_status: data.marriage_status ?? '',
                     is_educate: !!data.is_educate,
+                    is_active: data.is_active ?? true,
+                    is_duafa: data.is_duafa ?? false,
                 },
             }));
             setDate(data.date_of_birth ? dayjs(data.date_of_birth) : null);
@@ -148,6 +152,8 @@ export default function MemberEdit() {
             id_family: selectedKeluarga?.id ?? '',
             family_name: selectedKeluarga?.name ?? '',
             is_educate: formValues.is_educate === true,
+            is_active: formValues.is_active ?? true,
+            is_duafa: formValues.is_duafa ?? false,
         };
     };
 
@@ -177,13 +183,14 @@ export default function MemberEdit() {
             const body = transformBody();
             const { error } = await supabase
                 .from('list_sensus')
-                .insert([body]);
+                .update([body])
+                .eq('uuid', id);
 
             if (error) {
                 notifications.show(`Gagal simpan data: ${error.message}`, { severity: 'error' });
             } else {
                 notifications.show('Data berhasil disimpan', { severity: 'success' });
-                setFormState((prev) => ({ ...prev, values: INITIAL_FORM_VALUES }));
+                window.history.back()
             }
         } finally {
             setIsSubmitting(false);

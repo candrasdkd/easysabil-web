@@ -20,6 +20,9 @@ import {
     DialogContent,
     DialogActions,
     CircularProgress,
+    Grid,
+    FormControlLabel,
+    Switch,
 } from '@mui/material';
 import {
     DataGrid,
@@ -46,6 +49,7 @@ import useNotifications from '../hooks/useNotifications/useNotifications';
 import { type Member } from '../types/Member';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { supabase } from '../supabase/client';
 
 dayjs.locale('id');
 
@@ -54,7 +58,7 @@ const INITIAL_PAGE_SIZE = 30;
 type Props = {
     loading?: boolean;
     members: Member[];
-    refreshMembers?: () => void;
+    refreshMembers: () => void;
 };
 
 export default function MemberList({ loading, members, refreshMembers }: Props) {
@@ -67,7 +71,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [selectedLevel, setSelectedLevel] = React.useState<string[]>([]);
     const [selectedMarriageStatus, setSelectedMarriageStatus] = React.useState<string[]>([]);
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
-
+    const [memberActive, setMemberActive] = React.useState(true);
     const [allMembers, setAllMembers] = React.useState<Member[]>(members);
     const [openPasswordDialog, setOpenPasswordDialog] = React.useState(false);
     const [password, setPassword] = React.useState('');
@@ -134,7 +138,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     }),
                 );
             }
-
+            if (memberActive !== null) {
+                filtered = filtered.filter((m) => m.is_active === memberActive);
+            }
             if (selectedGender.length) {
                 filtered = filtered.filter((m) => selectedGender.includes(m.gender));
             }
@@ -163,6 +169,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         selectedGender,
         selectedLevel,
         selectedMarriageStatus,
+        memberActive
     ]);
 
     React.useEffect(() => {
@@ -208,8 +215,24 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
                 try {
                     // TODO: panggil API penghapusan di sini
-                    notifications.show('Berhasil menghapus data', { severity: 'success', autoHideDuration: 3000 });
-                    loadData();
+                    const { error, status } = await supabase
+                        .from('list_sensus')
+                        .delete()
+                        .eq('uuid', member.uuid);
+                    if (error) {
+                        notifications.show(`Gagal menghapus data. Reason: ${(error as Error).message}`, {
+                            severity: 'error',
+                            autoHideDuration: 3000,
+                        });
+                        return;
+                    }
+
+                    if (status === 204) {
+                        notifications.show('Berhasil menghapus data', { severity: 'success', autoHideDuration: 3000 });
+                        loadData();
+                        refreshMembers(); // Refresh the data
+                    }
+
                 } catch (deleteError) {
                     notifications.show(`Gagal menghapus data. Reason: ${(deleteError as Error).message}`, {
                         severity: 'error',
@@ -377,7 +400,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         });
         saveAs(blob, 'Data_Jamaah_Kelompok_1.xlsx');
     };
-    console.log('MemberList rendered', rowsState);
+    console.log('MemberList rendered', memberActive);
 
     return (
         <PageContainer
@@ -565,6 +588,20 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 </MenuItem>
                             ))}
                         </TextField>
+
+                        {/* Switch Sedang Binaan */}
+                        <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={memberActive}
+                                        onChange={(e) => setMemberActive(e.target.checked)}
+                                        color="primary"
+                                    />
+                                }
+                                label="Sambung Aktif?"
+                            />
+                        </Grid>
                     </Stack>
 
                     <Stack direction="row" justifyContent="flex-end" spacing={2} mt={3}>

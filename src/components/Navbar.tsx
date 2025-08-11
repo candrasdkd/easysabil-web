@@ -13,8 +13,8 @@ import { useThemeMode } from '../hooks/themes/ThemeContext'; // Sesuaikan path
 const drawerWidth = 240;
 const navItems = [
     { label: 'Dashboard', path: '/' },
-    { label: 'Member', path: '/members' },
-    { label: 'Order', path: '/order' },
+    { label: 'Sensus', path: '/members' },
+    { label: 'Pemesanan', path: '/order' },
 ];
 
 export default function DrawerAppBar(props: {

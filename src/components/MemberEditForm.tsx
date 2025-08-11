@@ -180,12 +180,38 @@ export default function MemberForm(props: MemberFormProps) {
                             disabled={uploading}
                             control={
                                 <Switch
+                                    checked={formValues.is_active === true}
+                                    onChange={(e) => onFieldChange('is_active', e.target.checked)}
+                                    color="primary"
+                                />
+                            }
+                            label="Sambung Aktif?"
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                        <FormControlLabel
+                            disabled={uploading}
+                            control={
+                                <Switch
                                     checked={formValues.is_educate === true}
                                     onChange={(e) => onFieldChange('is_educate', e.target.checked)}
                                     color="primary"
                                 />
                             }
                             label="Sedang Binaan?"
+                        />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                        <FormControlLabel
+                            disabled={uploading}
+                            control={
+                                <Switch
+                                    checked={formValues.is_duafa === true}
+                                    onChange={(e) => onFieldChange('is_duafa', e.target.checked)}
+                                    color="primary"
+                                />
+                            }
+                            label="Kategori Duafa?"
                         />
                     </Grid>
 

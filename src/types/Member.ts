@@ -28,6 +28,8 @@ export interface MemberFormState {
         education: string;
         marriage_status: string;
         is_educate: boolean; // boolean
+        is_active?: boolean; // boolean
+        is_duafa?: boolean; // boolean
     };
     errors: Partial<Record<keyof MemberFormState['values'], string>>;
 }

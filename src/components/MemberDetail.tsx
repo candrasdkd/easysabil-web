@@ -16,13 +16,13 @@ import dayjs from 'dayjs';
 import { useDialogs } from '../hooks/useDialogs/useDialogs';
 import useNotifications from '../hooks/useNotifications/useNotifications';
 import {
-    deleteOne as deleteEmployee,
     getOne as getMember,
     type Member,
 } from '../types/Member';
 import PageContainer from './PageContainer';
 import { Dialog, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
+import { supabase } from '../supabase/client';
 
 export default function EmployeeShow() {
     const { id } = useParams();
@@ -89,12 +89,22 @@ export default function EmployeeShow() {
             if (confirmed) {
                 setIsLoading(true);
                 try {
-                    await deleteEmployee(String(id));
-                    navigate('/members');
-                    notifications.show('Berhasil menghapus data', {
-                        severity: 'success',
-                        autoHideDuration: 3000,
-                    });
+                    const { error, status } = await supabase
+                        .from('list_sensus')
+                        .delete()
+                        .eq('uuid', member.uuid);
+                    if (error) {
+                        notifications.show(`Gagal menghapus data. Reason: ${(error as Error).message}`, {
+                            severity: 'error',
+                            autoHideDuration: 3000,
+                        });
+                        return;
+                    }
+
+                    if (status === 204) {
+                        notifications.show('Berhasil menghapus data', { severity: 'success', autoHideDuration: 3000 });
+                        window.history.back()
+                    }
                 } catch (deleteError) {
                     notifications.show(
                         `Gagal menghapus data. Reason:' ${(deleteError as Error).message}`,
