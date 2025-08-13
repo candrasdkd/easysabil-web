@@ -14,7 +14,7 @@ const drawerWidth = 240;
 const navItems = [
     { label: 'Dashboard', path: '/' },
     { label: 'Sensus', path: '/members' },
-    { label: 'Pemesanan', path: '/order' },
+    { label: 'Pemesanan', path: '/category-orders' },
 ];
 
 export default function DrawerAppBar(props: {
