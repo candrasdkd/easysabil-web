@@ -145,7 +145,8 @@ export default function MemberForm(props: MemberFormProps) {
                                 onChange={(e) => onFieldChange('education', e.target.value)}
                                 label="Pilih Jenjang"
                             >
-                                <MenuItem value="Balita">Balita (0-5 Tahun)</MenuItem>
+                                <MenuItem value="Batita">Batita (0-3 Tahun)</MenuItem>
+                                <MenuItem value="Paud">Paud (3-5 Tahun)</MenuItem>
                                 <MenuItem value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</MenuItem>
                                 <MenuItem value="Pra Remaja">Pra Remaja (12-15 Tahun)</MenuItem>
                                 <MenuItem value="Remaja">Remaja (15-19 Tahun)</MenuItem>

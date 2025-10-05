@@ -131,7 +131,8 @@ export default function MemberCreate() {
             const body = transformBody();
             const { error } = await supabase
                 .from('list_sensus')
-                .insert([body]);
+                .insert([body])
+                .select();
 
             if (error) {
                 notifications.show(`Gagal simpan data: ${error.message}`, { severity: 'error' });

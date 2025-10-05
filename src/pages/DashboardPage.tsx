@@ -8,7 +8,7 @@ export default function DashboardPage() {
     const [listFamily, setListFamily] = useState<Familys[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const fetchMembers = async () => {
-        const { data, error } = await supabase.from('list_sensus').select('*')
+        const { data, error } = await supabase.from('list_sensus').select('*').eq('is_active', true)
         if (!error && data) {
             setMembers(data)
             setMembersStore(data)

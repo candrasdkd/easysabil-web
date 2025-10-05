@@ -15,6 +15,7 @@ const navItems = [
     { label: 'Dashboard', path: '/' },
     { label: 'Sensus', path: '/members' },
     { label: 'Pemesanan', path: '/category-orders' },
+    { label: 'Rekap', path: '/rekap' },
 ];
 
 export default function DrawerAppBar(props: {

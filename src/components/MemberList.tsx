@@ -20,9 +20,6 @@ import {
     DialogContent,
     DialogActions,
     CircularProgress,
-    Grid,
-    FormControlLabel,
-    Switch,
 } from '@mui/material';
 import {
     DataGrid,
@@ -71,7 +68,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [selectedLevel, setSelectedLevel] = React.useState<string[]>([]);
     const [selectedMarriageStatus, setSelectedMarriageStatus] = React.useState<string[]>([]);
     const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
-    const [memberActive, setMemberActive] = React.useState(true);
+    const [memberStatus, setMemberStatus] = React.useState<'Aktif' | 'Tidak Aktif' | 'Semua'>('Aktif');
     const [allMembers, setAllMembers] = React.useState<Member[]>(members);
     const [openPasswordDialog, setOpenPasswordDialog] = React.useState(false);
     const [password, setPassword] = React.useState('');
@@ -92,7 +89,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-    // sinkronisasi data dari props
     React.useEffect(() => {
         setAllMembers(members);
     }, [members]);
@@ -119,10 +115,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             const start = paginationModel.page * paginationModel.pageSize;
             const end = start + paginationModel.pageSize;
 
-            // filter
             let filtered = allMembers;
 
-            // search (skip kolom tertentu & format tanggal)
+            // FILTER TAMBAHAN: is_educate harus false
+            filtered = filtered.filter((m) => m.is_educate === false);
+
             if (searchText.trim()) {
                 const q = searchText.toLowerCase();
                 filtered = filtered.filter((m) =>
@@ -138,9 +135,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     }),
                 );
             }
-            if (memberActive !== null) {
-                filtered = filtered.filter((m) => m.is_active === memberActive);
+
+            if (memberStatus === 'Aktif') {
+                filtered = filtered.filter((m) => m.is_active === true);
+            } else if (memberStatus === 'Tidak Aktif') {
+                filtered = filtered.filter((m) => m.is_active === false);
             }
+
             if (selectedGender.length) {
                 filtered = filtered.filter((m) => selectedGender.includes(m.gender));
             }
@@ -151,7 +152,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 filtered = filtered.filter((m) => selectedMarriageStatus.includes(m.marriage_status));
             }
 
-            // paging
             const pageRows = filtered.slice(start, end).map((m) => ({ ...m, id: m.uuid }));
 
             setRowsState({
@@ -169,7 +169,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         selectedGender,
         selectedLevel,
         selectedMarriageStatus,
-        memberActive
+        memberStatus,
     ]);
 
     React.useEffect(() => {
@@ -214,7 +214,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 if (!confirmed) return;
 
                 try {
-                    // TODO: panggil API penghapusan di sini
                     const { error, status } = await supabase
                         .from('list_sensus')
                         .delete()
@@ -230,7 +229,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     if (status === 204) {
                         notifications.show('Berhasil menghapus data', { severity: 'success', autoHideDuration: 3000 });
                         loadData();
-                        refreshMembers(); // Refresh the data
+                        refreshMembers();
                     }
 
                 } catch (deleteError) {
@@ -241,7 +240,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 }
             });
         },
-        [dialogs, notifications, loadData],
+        [dialogs, notifications, loadData, refreshMembers],
     );
 
     const handlePasswordSubmit = () => {
@@ -265,9 +264,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         setSelectedGender([]);
         setSelectedLevel([]);
         setSelectedMarriageStatus([]);
+        setMemberStatus('Aktif');
         setPaginationModel((prev) => ({ ...prev, page: 0 }));
         setSearchText('');
-        loadData();
     };
 
     const columns = React.useMemo<GridColDef<Member>[]>(
@@ -347,29 +346,42 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     );
 
     const handleExportExcel = () => {
-        // deskripsi filter
         const filterInfo = [
             ['Filter yang Aktif:'],
+            [`Status Keaktifan: ${memberStatus}`],
             [`Jenis Kelamin: ${selectedGender.length ? selectedGender.join(', ') : 'Semua'}`],
             [`Jenjang Pendidikan: ${selectedLevel.length ? selectedLevel.join(', ') : 'Semua'}`],
             [`Status Pernikahan: ${selectedMarriageStatus.length ? selectedMarriageStatus.join(', ') : 'Semua'}`],
             [],
         ];
 
-        const filtered = allMembers.filter((m) => {
-            if (selectedGender.length && !selectedGender.includes(m.gender)) return false;
-            if (selectedLevel.length && !selectedLevel.includes(m.level)) return false;
-            if (selectedMarriageStatus.length && !selectedMarriageStatus.includes(m.marriage_status)) return false;
+        let filtered = allMembers;
 
-            if (searchText.trim()) {
-                const q = searchText.toLowerCase();
-                return Object.values(m).some((v) => String(v ?? '').toLowerCase().includes(q));
-            }
-            return true;
-        });
+        // FILTER TAMBAHAN: is_educate harus false
+        filtered = filtered.filter((m) => m.is_educate === false);
+
+        if (memberStatus === 'Aktif') {
+            filtered = filtered.filter((m) => m.is_active === true);
+        } else if (memberStatus === 'Tidak Aktif') {
+            filtered = filtered.filter((m) => m.is_active === false);
+        }
+        if (selectedGender.length) {
+            filtered = filtered.filter((m) => selectedGender.includes(m.gender));
+        }
+        if (selectedLevel.length) {
+            filtered = filtered.filter((m) => selectedLevel.includes(m.level));
+        }
+        if (selectedMarriageStatus.length) {
+            filtered = filtered.filter((m) => selectedMarriageStatus.includes(m.marriage_status));
+        }
+        if (searchText.trim()) {
+            const q = searchText.toLowerCase();
+            filtered = filtered.filter((m) => Object.values(m).some((v) => String(v ?? '').toLowerCase().includes(q)));
+        }
 
         const data = filtered.map((row) => ({
             'Nama Lengkap': row.name,
+            'Status Aktif': row.is_active ? 'Aktif' : 'Tidak Aktif',
             Jenjang: row.level,
             'Jenis Kelamin': row.gender,
             Umur: row.age,
@@ -377,18 +389,14 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             'Status Pernikahan': row.marriage_status,
         }));
 
-        const header = Object.keys(data[0] || {});
+        const header = data.length > 0 ? Object.keys(data[0]) : [];
         const dataWithHeader = [header, ...data.map((r) => Object.values(r))];
         const fullData = [...filterInfo, ...dataWithHeader];
         const ws = XLSX.utils.aoa_to_sheet(fullData);
 
         ws['!cols'] = [
-            { wch: 30 },
-            { wch: 15 },
-            { wch: 15 },
-            { wch: 10 },
-            { wch: 20 },
-            { wch: 20 },
+            { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
+            { wch: 10 }, { wch: 20 }, { wch: 20 },
         ];
 
         const wb = XLSX.utils.book_new();
@@ -398,9 +406,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         const blob = new Blob([excelBuffer], {
             type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         });
-        saveAs(blob, 'Data_Jamaah_Kelompok_1.xlsx');
+        saveAs(blob, 'Data_Jamaah.xlsx');
     };
-    console.log('MemberList rendered', memberActive);
 
     return (
         <PageContainer
@@ -524,6 +531,19 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     </Typography>
                     <Stack spacing={2}>
                         <TextField
+                            select
+                            label="Status Keaktifan"
+                            value={memberStatus}
+                            onChange={(e) => setMemberStatus(e.target.value as 'Aktif' | 'Tidak Aktif' | 'Semua')}
+                            size="small"
+                            fullWidth
+                        >
+                            <MenuItem value="Semua">Semua</MenuItem>
+                            <MenuItem value="Aktif">Aktif</MenuItem>
+                            <MenuItem value="Tidak Aktif">Tidak Aktif</MenuItem>
+                        </TextField>
+
+                        <TextField
                             label="Jenis Kelamin"
                             size="small"
                             select
@@ -559,7 +579,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 setSelectedLevel(v);
                             }}
                         >
-                            {Array.from(new Set(allMembers.map((m) => m.level))).map((level) => (
+                            {Array.from(new Set(allMembers.map((m) => m.level))).sort().map((level) => (
                                 <MenuItem key={level} value={level}>
                                     <Checkbox checked={selectedLevel.includes(level)} />
                                     <ListItemText primary={level} />
@@ -588,20 +608,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 </MenuItem>
                             ))}
                         </TextField>
-
-                        {/* Switch Sedang Binaan */}
-                        <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
-                            <FormControlLabel
-                                control={
-                                    <Switch
-                                        checked={memberActive}
-                                        onChange={(e) => setMemberActive(e.target.checked)}
-                                        color="primary"
-                                    />
-                                }
-                                label="Sambung Aktif?"
-                            />
-                        </Grid>
                     </Stack>
 
                     <Stack direction="row" justifyContent="flex-end" spacing={2} mt={3}>
