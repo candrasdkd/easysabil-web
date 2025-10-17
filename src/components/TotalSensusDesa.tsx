@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import TableSensus from './tableTotalSensus';
+import TableSensus from './TableTotalSensus';
 interface ProcessedData {
     totalJiwaKelompok1: number;
     totalKeluargaKelompok1: number;

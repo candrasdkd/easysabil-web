@@ -7,7 +7,7 @@ import MemberDetailPage from './pages/MemberDetailPage';
 import Navbar from './components/Navbar';
 import CategoryOrder from './components/CategoryOrder';
 import { Box, Toolbar } from '@mui/material';
-import RekapSensusScreen from "./components/totalSensusDesa";
+import RekapSensusScreen from "./components/TotalSensusDesa";
 export default function AppRoutes() {
     return (
         <>
