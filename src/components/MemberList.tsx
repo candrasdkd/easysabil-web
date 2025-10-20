@@ -29,6 +29,7 @@ import {
     type GridPaginationModel,
     type GridEventListener,
     GridToolbar,
+    type GridSortModel,
 } from '@mui/x-data-grid';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
@@ -81,6 +82,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         page: 0,
         pageSize: INITIAL_PAGE_SIZE,
     });
+    const [sortModel, setSortModel] = React.useState<GridSortModel>([
+        { field: 'order', sort: 'asc' },
+    ]);
     const [rowsState, setRowsState] = React.useState<{ rows: Member[]; rowCount: number }>({
         rows: [],
         rowCount: 0,
@@ -109,67 +113,128 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         );
     };
 
+    /**
+     * Memoized hook to get filtered and sorted members.
+     * This is the single source of truth for both DataGrid and Excel export.
+     */
+    const filteredAndSortedMembers = React.useMemo(() => {
+        let filtered = allMembers;
+
+        // 1. FILTER: is_educate (Filter tambahan)
+        filtered = filtered.filter((m) => m.is_educate === false);
+
+        // 2. FILTER: Status
+        if (memberStatus === 'Aktif') {
+            filtered = filtered.filter((m) => m.is_active === true);
+        } else if (memberStatus === 'Tidak Aktif') {
+            filtered = filtered.filter((m) => m.is_active === false);
+        }
+
+        // 3. FILTER: Gender
+        if (selectedGender.length) {
+            filtered = filtered.filter((m) => selectedGender.includes(m.gender));
+        }
+        // 4. FILTER: Level
+        if (selectedLevel.length) {
+            filtered = filtered.filter((m) => selectedLevel.includes(m.level));
+        }
+        // 5. FILTER: Marriage Status
+        if (selectedMarriageStatus.length) {
+            filtered = filtered.filter((m) => selectedMarriageStatus.includes(m.marriage_status));
+        }
+
+        // 6. FILTER: Search Text
+        if (searchText.trim()) {
+            const q = searchText.toLowerCase();
+            filtered = filtered.filter((m) =>
+                Object.entries(m).some(([key, value]) => {
+                    if (value == null) return false;
+                    if (key === 'family_name') return false; // Sesuai logic lama di loadData
+
+                    let str = String(value);
+                    if (key === 'date_of_birth') {
+                        str = dayjs(value as string).format('DD MMMM YYYY');
+                    }
+                    return str.toLowerCase().includes(q);
+                }),
+            );
+        }
+
+        // 7. SORT
+        if (sortModel.length > 0) {
+            const { field, sort } = sortModel[0];
+
+            filtered = filtered.sort((a, b) => {
+                const aValue = a[field as keyof Member];
+                const bValue = b[field as keyof Member];
+
+                // Taruh nilai null/undefined di akhir
+                if (aValue == null) return 1;
+                if (bValue == null) return -1;
+
+                let compare = 0;
+
+                // Helper untuk mengonversi nilai date-like menjadi timestamp
+                const toTimestamp = (v: unknown): number => {
+                    if (v instanceof Date) return v.getTime();
+                    if (typeof v === 'string') {
+                        const t = Date.parse(v);
+                        return isNaN(t) ? NaN : t;
+                    }
+                    return NaN;
+                };
+
+                if (typeof aValue === 'number' && typeof bValue === 'number') {
+                    compare = aValue - bValue;
+                } else {
+                    const aTime = toTimestamp(aValue);
+                    const bTime = toTimestamp(bValue);
+                    if (!isNaN(aTime) && !isNaN(bTime)) {
+                        compare = aTime - bTime;
+                    } else {
+                        // Default ke perbandingan string
+                        compare = String(aValue ?? '').localeCompare(String(bValue ?? ''));
+                    }
+                }
+
+                return sort === 'desc' ? -compare : compare;
+            });
+        }
+
+        return filtered;
+    }, [
+        allMembers,
+        searchText,
+        memberStatus,
+        selectedGender,
+        selectedLevel,
+        selectedMarriageStatus,
+        sortModel,
+    ]);
+
+    /**
+     * loadData now simply paginates the pre-filtered/sorted list
+     */
     const loadData = React.useCallback(() => {
         setError(null);
         try {
             const start = paginationModel.page * paginationModel.pageSize;
             const end = start + paginationModel.pageSize;
 
-            let filtered = allMembers;
-
-            // FILTER TAMBAHAN: is_educate harus false
-            filtered = filtered.filter((m) => m.is_educate === false);
-
-            if (searchText.trim()) {
-                const q = searchText.toLowerCase();
-                filtered = filtered.filter((m) =>
-                    Object.entries(m).some(([key, value]) => {
-                        if (value == null) return false;
-                        if (key === 'family_name') return false;
-
-                        let str = String(value);
-                        if (key === 'date_of_birth') {
-                            str = dayjs(value as string).format('DD MMMM YYYY');
-                        }
-                        return str.toLowerCase().includes(q);
-                    }),
-                );
-            }
-
-            if (memberStatus === 'Aktif') {
-                filtered = filtered.filter((m) => m.is_active === true);
-            } else if (memberStatus === 'Tidak Aktif') {
-                filtered = filtered.filter((m) => m.is_active === false);
-            }
-
-            if (selectedGender.length) {
-                filtered = filtered.filter((m) => selectedGender.includes(m.gender));
-            }
-            if (selectedLevel.length) {
-                filtered = filtered.filter((m) => selectedLevel.includes(m.level));
-            }
-            if (selectedMarriageStatus.length) {
-                filtered = filtered.filter((m) => selectedMarriageStatus.includes(m.marriage_status));
-            }
-
-            const pageRows = filtered.slice(start, end).map((m) => ({ ...m, id: m.uuid }));
+            // Gunakan data yang sudah difilter dan disortir
+            const pageRows = filteredAndSortedMembers.slice(start, end).map((m) => ({ ...m, id: m.uuid }));
 
             setRowsState({
                 rows: pageRows,
-                rowCount: filtered.length,
+                rowCount: filteredAndSortedMembers.length,
             });
         } catch (e) {
             setError(e as Error);
         }
     }, [
-        allMembers,
+        filteredAndSortedMembers, // Hanya bergantung pada list & paginasi
         paginationModel.page,
         paginationModel.pageSize,
-        searchText,
-        selectedGender,
-        selectedLevel,
-        selectedMarriageStatus,
-        memberStatus,
     ]);
 
     React.useEffect(() => {
@@ -228,10 +293,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
                     if (status === 204) {
                         notifications.show('Berhasil menghapus data', { severity: 'success', autoHideDuration: 3000 });
-                        loadData();
-                        refreshMembers();
+                        loadData(); // loadData akan otomatis mengambil dari useMemo yang baru
+                        refreshMembers(); // refresh allMembers
                     }
-
                 } catch (deleteError) {
                     notifications.show(`Gagal menghapus data. Reason: ${(deleteError as Error).message}`, {
                         severity: 'error',
@@ -240,7 +304,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 }
             });
         },
-        [dialogs, notifications, loadData, refreshMembers],
+        [dialogs, notifications, loadData, refreshMembers], // loadData sdh di-memoized
     );
 
     const handlePasswordSubmit = () => {
@@ -314,10 +378,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 width: 140,
                 align: 'center',
                 headerAlign: 'center',
-                renderCell: (params) => highlightMatch(
-                    dayjs(params.row.date_of_birth).format('DD MMMM YYYY'),
-                    searchText
-                ),
+                renderCell: (params) =>
+                    highlightMatch(dayjs(params.row.date_of_birth).format('DD MMMM YYYY'), searchText),
             },
             {
                 field: 'marriage_status',
@@ -330,6 +392,23 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 renderCell: (p) => highlightMatch(p.row.marriage_status, searchText),
             },
             {
+                field: 'family_name',
+                headerName: 'KELUARGA',
+                width: 100,
+                align: 'center',
+                headerAlign: 'center',
+                renderCell: (p) => highlightMatch(p.row.family_name, searchText),
+            },
+            {
+                field: 'order',
+                headerName: 'URUTAN',
+                type: 'number',
+                width: 100,
+                align: 'center',
+                headerAlign: 'center',
+                renderCell: (p) => highlightMatch(p.row.order, searchText),
+            },
+            {
                 field: 'actions',
                 headerName: 'ACTIONS',
                 type: 'actions',
@@ -338,13 +417,21 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 headerAlign: 'center',
                 getActions: ({ row }) => [
                     <GridActionsCellItem key="edit" icon={<EditIcon />} label="Edit" onClick={handleRowEdit(row)} />,
-                    <GridActionsCellItem key="delete" icon={<DeleteIcon />} label="Delete" onClick={handleRowDelete(row)} />,
+                    <GridActionsCellItem
+                        key="delete"
+                        icon={<DeleteIcon />}
+                        label="Delete"
+                        onClick={handleRowDelete(row)}
+                    />,
                 ],
             },
         ],
         [handleRowEdit, handleRowDelete, searchText],
     );
 
+    /**
+     * handleExportExcel now uses the memoized, sorted, and filtered data
+     */
     const handleExportExcel = () => {
         const filterInfo = [
             ['Filter yang Aktif:'],
@@ -352,34 +439,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             [`Jenis Kelamin: ${selectedGender.length ? selectedGender.join(', ') : 'Semua'}`],
             [`Jenjang Pendidikan: ${selectedLevel.length ? selectedLevel.join(', ') : 'Semua'}`],
             [`Status Pernikahan: ${selectedMarriageStatus.length ? selectedMarriageStatus.join(', ') : 'Semua'}`],
+            [`Pencarian: ${searchText.trim() || 'Tidak ada'}`],
             [],
         ];
 
-        let filtered = allMembers;
-
-        // FILTER TAMBAHAN: is_educate harus false
-        filtered = filtered.filter((m) => m.is_educate === false);
-
-        if (memberStatus === 'Aktif') {
-            filtered = filtered.filter((m) => m.is_active === true);
-        } else if (memberStatus === 'Tidak Aktif') {
-            filtered = filtered.filter((m) => m.is_active === false);
-        }
-        if (selectedGender.length) {
-            filtered = filtered.filter((m) => selectedGender.includes(m.gender));
-        }
-        if (selectedLevel.length) {
-            filtered = filtered.filter((m) => selectedLevel.includes(m.level));
-        }
-        if (selectedMarriageStatus.length) {
-            filtered = filtered.filter((m) => selectedMarriageStatus.includes(m.marriage_status));
-        }
-        if (searchText.trim()) {
-            const q = searchText.toLowerCase();
-            filtered = filtered.filter((m) => Object.values(m).some((v) => String(v ?? '').toLowerCase().includes(q)));
-        }
-
-        const data = filtered.map((row) => ({
+        // Gunakan data yang SUDAH difilter dan disortir
+        const data = filteredAndSortedMembers.map((row) => ({
             'Nama Lengkap': row.name,
             'Status Aktif': row.is_active ? 'Aktif' : 'Tidak Aktif',
             Jenjang: row.level,
@@ -387,6 +452,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             Umur: row.age,
             'Tanggal Lahir': row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMMM YYYY') : '',
             'Status Pernikahan': row.marriage_status,
+            Keluarga: row.family_name,
+            Urutan: row.order,
         }));
 
         const header = data.length > 0 ? Object.keys(data[0]) : [];
@@ -394,9 +461,17 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         const fullData = [...filterInfo, ...dataWithHeader];
         const ws = XLSX.utils.aoa_to_sheet(fullData);
 
+        // Sesuaikan lebar kolom (menambahkan 2 kolom baru)
         ws['!cols'] = [
-            { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-            { wch: 10 }, { wch: 20 }, { wch: 20 },
+            { wch: 30 }, // Nama
+            { wch: 15 }, // Status
+            { wch: 15 }, // Jenjang
+            { wch: 15 }, // Gender
+            { wch: 10 }, // Umur
+            { wch: 20 }, // Tgl Lahir
+            { wch: 20 }, // Status Nikah
+            { wch: 15 }, // Keluarga
+            { wch: 10 }, // Urutan
         ];
 
         const wb = XLSX.utils.book_new();
@@ -445,12 +520,15 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         rows={rowsState.rows}
                         rowCount={rowsState.rowCount}
                         columns={columns}
-                        paginationMode='server'
+                        paginationMode="server"
                         paginationModel={paginationModel}
                         onPaginationModelChange={setPaginationModel}
                         disableRowSelectionOnClick
                         onRowClick={handleRowClick}
                         loading={loading}
+                        sortingMode="server"
+                        sortModel={sortModel}
+                        onSortModelChange={setSortModel}
                         slots={{
                             toolbar: GridToolbar,
                             pagination: () => (
@@ -553,7 +631,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             }}
                             value={selectedGender}
                             onChange={(e) => {
-                                const v = typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[]);
+                                const v =
+                                    typeof e.target.value === 'string'
+                                        ? e.target.value.split(',')
+                                        : (e.target.value as string[]);
                                 setSelectedGender(v);
                             }}
                         >
@@ -575,16 +656,21 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             }}
                             value={selectedLevel}
                             onChange={(e) => {
-                                const v = typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[]);
+                                const v =
+                                    typeof e.target.value === 'string'
+                                        ? e.target.value.split(',')
+                                        : (e.target.value as string[]);
                                 setSelectedLevel(v);
                             }}
                         >
-                            {Array.from(new Set(allMembers.map((m) => m.level))).sort().map((level) => (
-                                <MenuItem key={level} value={level}>
-                                    <Checkbox checked={selectedLevel.includes(level)} />
-                                    <ListItemText primary={level} />
-                                </MenuItem>
-                            ))}
+                            {Array.from(new Set(allMembers.map((m) => m.level)))
+                                .sort()
+                                .map((level) => (
+                                    <MenuItem key={level} value={level}>
+                                        <Checkbox checked={selectedLevel.includes(level)} />
+                                        <ListItemText primary={level} />
+                                    </MenuItem>
+                                ))}
                         </TextField>
 
                         <TextField
@@ -597,7 +683,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             }}
                             value={selectedMarriageStatus}
                             onChange={(e) => {
-                                const v = typeof e.target.value === 'string' ? e.target.value.split(',') : (e.target.value as string[]);
+                                const v =
+                                    typeof e.target.value === 'string'
+                                        ? e.target.value.split(',')
+                                        : (e.target.value as string[]);
                                 setSelectedMarriageStatus(v);
                             }}
                         >
@@ -619,7 +708,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             variant="contained"
                             onClick={() => {
                                 setPaginationModel((prev) => ({ ...prev, page: 0 }));
-                                loadData();
+                                // loadData(); // loadData akan dipanggil oleh useEffect
                                 setFilterDialogOpen(false);
                             }}
                         >

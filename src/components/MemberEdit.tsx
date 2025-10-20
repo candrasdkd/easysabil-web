@@ -56,6 +56,7 @@ export default function MemberEdit() {
         is_educate: false,
         is_active: true, // default value
         is_duafa: false, // default value
+        order: null
     };
 
     const [formState, setFormState] = React.useState<MemberFormState>(() => ({
@@ -70,7 +71,7 @@ export default function MemberEdit() {
             const { data, error } = await supabase
                 .from('list_sensus')
                 .select(
-                    'uuid, name, date_of_birth, gender, level, age, marriage_status, id_family, family_name, is_educate, is_active, is_duafa'
+                    'uuid, name, date_of_birth, gender, level, age, marriage_status, id_family, family_name, is_educate, is_active, is_duafa, order'
                 )
                 .eq('uuid', memberUuid) // ganti ke .eq('id', ...) jika kolom primermu "id"
                 .single();
@@ -99,6 +100,7 @@ export default function MemberEdit() {
                     is_educate: !!data.is_educate,
                     is_active: data.is_active ?? true,
                     is_duafa: data.is_duafa ?? false,
+                    order: data.order ?? null
                 },
             }));
             setDate(data.date_of_birth ? dayjs(data.date_of_birth) : null);
@@ -154,6 +156,7 @@ export default function MemberEdit() {
             is_educate: formValues.is_educate === true,
             is_active: formValues.is_active ?? true,
             is_duafa: formValues.is_duafa ?? false,
+            order: formValues.order ?? null
         };
     };
 

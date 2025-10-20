@@ -50,7 +50,7 @@ export default function MemberForm(props: MemberFormProps) {
             <FormGroup>
                 <Grid container spacing={2} sx={{ mb: 4 }}>
                     {/* Dropdown Keluarga (Supabase) */}
-                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}>
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}> {/* <-- DIKEMBALIKAN */}
                         <FormControl fullWidth error={!!formErrors.keluarga}>
                             <Autocomplete
                                 loading={true}
@@ -77,7 +77,7 @@ export default function MemberForm(props: MemberFormProps) {
                     </Grid>
 
                     {/* Input Nama */}
-                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}>
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}> {/* <-- DIKEMBALIKAN */}
                         <TextField
                             disabled={uploading}
                             value={formValues.name ?? ''}
@@ -91,7 +91,7 @@ export default function MemberForm(props: MemberFormProps) {
                     </Grid>
 
                     {/* Input Tanggal Lahir */}
-                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}>
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}> {/* <-- DIKEMBALIKAN */}
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                             <DatePicker
                                 disabled={uploading}
@@ -112,7 +112,7 @@ export default function MemberForm(props: MemberFormProps) {
                     </Grid>
 
                     {/* Usia (Disabled) */}
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}> {/* <-- DIKEMBALIKAN */}
                         <TextField
                             value={formValues.age ?? ''}
                             label="Usia Akan Otomatis"
@@ -122,7 +122,7 @@ export default function MemberForm(props: MemberFormProps) {
                     </Grid>
 
                     {/* Dropdown Jenis Kelamin */}
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}> {/* <-- DIKEMBALIKAN */}
                         <FormControl fullWidth error={!!formErrors.gender} disabled={uploading}>
                             <InputLabel>Pilih Jenis Kelamin</InputLabel>
                             <Select
@@ -137,7 +137,7 @@ export default function MemberForm(props: MemberFormProps) {
                     </Grid>
 
                     {/* Dropdown Jenjang Pendidikan */}
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}> {/* <-- DIKEMBALIKAN */}
                         <FormControl fullWidth error={!!formErrors.education} disabled={uploading}>
                             <InputLabel>Pilih Jenjang</InputLabel>
                             <Select
@@ -157,8 +157,10 @@ export default function MemberForm(props: MemberFormProps) {
                         </FormControl>
                     </Grid>
 
+
+
                     {/* Dropdown Status Pernikahan */}
-                    <Grid size={{ xs: 12, sm: 6 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}> {/* <-- DIKEMBALIKAN */}
                         <FormControl fullWidth error={!!formErrors.marriage_status} disabled={uploading}>
                             <InputLabel>Pilih Status Pernikahan</InputLabel>
                             <Select
@@ -175,8 +177,28 @@ export default function MemberForm(props: MemberFormProps) {
                             </Select>
                         </FormControl>
                     </Grid>
+                    {/* Input Urutan (BARU) */}
+                    <Grid size={{ xs: 12, sm: 6 }} mb={-3}> {/* <-- FORMAT ASLI + FIELD BARU */}
+                        <TextField
+                            disabled={uploading}
+                            type="number"
+                            value={formValues.order ?? ''}
+                            onChange={(e) => onFieldChange('order', e.target.value)}
+                            name="order"
+                            label="Urutan"
+                            error={!!formErrors.order}
+                            helperText={formErrors.order ?? ' '}
+                            fullWidth
+                            InputProps={{
+                                inputProps: {
+                                    min: 1, // Batas minimal
+                                    max: 5  // Batas maksimal
+                                }
+                            }}
+                        />
+                    </Grid>
                     {/* Switch Sedang Binaan */}
-                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center"> {/* <-- DIKEMBALIKAN */}
                         <FormControlLabel
                             disabled={uploading}
                             control={
@@ -189,7 +211,7 @@ export default function MemberForm(props: MemberFormProps) {
                             label="Sambung Aktif?"
                         />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center"> {/* <-- DIKEMBALIKAN */}
                         <FormControlLabel
                             disabled={uploading}
                             control={
@@ -202,7 +224,7 @@ export default function MemberForm(props: MemberFormProps) {
                             label="Sedang Binaan?"
                         />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center">
+                    <Grid size={{ xs: 12, sm: 6 }} display="flex" alignItems="center"> {/* <-- DIKEMBALIKAN */}
                         <FormControlLabel
                             disabled={uploading}
                             control={

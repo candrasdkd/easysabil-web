@@ -16,6 +16,7 @@ export interface Member {
     is_educate: boolean;
     is_duafa: boolean;
     created_at: string;
+    order: number;
 }
 
 export interface MemberFormState {
@@ -30,6 +31,7 @@ export interface MemberFormState {
         is_educate: boolean; // boolean
         is_active?: boolean; // boolean
         is_duafa?: boolean; // boolean
+        order?: number | null
     };
     errors: Partial<Record<keyof MemberFormState['values'], string>>;
 }
