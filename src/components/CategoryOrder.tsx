@@ -15,6 +15,8 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { supabase } from "../supabase/client"; // ⬅️ sesuaikan path
+import { useNavigate } from "react-router";
+
 
 export interface OrderCategory {
     id: string;
@@ -241,7 +243,7 @@ export default function OrderCategoryScreen() {
     const [rows, setRows] = React.useState<OrderCategory[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-
+    const navigate = useNavigate();
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -266,6 +268,20 @@ export default function OrderCategoryScreen() {
         }
         setLoading(false);
     }, []);
+
+    const handleSelect = (d: OrderCategory) => {
+        // Bentuk payload sesuai tipe SelectedCategoryProps di OrderListPage
+        const selectedCategory = {
+            id: d.id,
+            name: d.name,
+            label: `${d.name} ${d.year}`,
+            value: `${d.name} ${d.year}`,
+            price: String(d.price),
+            year: d.year,
+        };
+        navigate("/orders", { state: { selectedCategory } }); // ⬅️ kirim via state
+    };
+
 
     React.useEffect(() => {
         fetchData();
@@ -311,7 +327,7 @@ export default function OrderCategoryScreen() {
                         <CategoryCard
                             data={item}
                             variant="glass"
-                            onSelect={(d) => console.log("select", d)}
+                            onSelect={handleSelect}
                         />
                     </Grid>
                 ))}

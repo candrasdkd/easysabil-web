@@ -8,6 +8,7 @@ import Navbar from './components/Navbar';
 import CategoryOrder from './components/CategoryOrder';
 import { Box, Toolbar } from '@mui/material';
 import RekapSensusScreen from "./components/TotalSensusDesa";
+import OrderListPage from './components/ListOrder';
 export default function AppRoutes() {
     return (
         <>
@@ -21,6 +22,7 @@ export default function AppRoutes() {
                     <Route path="/members/:id/edit" element={<MemberEditPage />} />
                     <Route path="/members/:id" element={<MemberDetailPage />} />
                     <Route path="/category-orders" element={<CategoryOrder />} />
+                    <Route path="/orders" element={<OrderListPage />} />
                     <Route path="/rekap" element={<RekapSensusScreen />} />
                     {/* Tambahkan rute lainnya sesuai kebutuhan */}
                     {/* atau komponen MemberList langsung di sini */}
