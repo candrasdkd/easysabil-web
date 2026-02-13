@@ -6,7 +6,7 @@ import MemberEditPage from './pages/MemberEditPage';
 import MemberDetailPage from './pages/MemberDetailPage';
 import Navbar from './components/Navbar';
 import CategoryOrder from './components/CategoryOrder';
-import RekapSensusScreen from "./components/TotalSensusDesa";
+import TabelSensusScreen from "./components/TableTotalSensus";
 import OrderListPage from './components/ListOrder';
 export default function AppRoutes() {
     return (
@@ -20,7 +20,7 @@ export default function AppRoutes() {
                 <Route path="/members/:id" element={<MemberDetailPage />} />
                 <Route path="/category-orders" element={<CategoryOrder />} />
                 <Route path="/orders" element={<OrderListPage />} />
-                <Route path="/rekap" element={<RekapSensusScreen />} />
+                <Route path="/rekap" element={<TabelSensusScreen />} />
                 {/* Tambahkan rute lainnya sesuai kebutuhan */}
                 {/* atau komponen MemberList langsung di sini */}
             </Routes>

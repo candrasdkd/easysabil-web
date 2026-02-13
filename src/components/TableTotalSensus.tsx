@@ -1,452 +1,737 @@
-import { forwardRef, useRef } from 'react';
+import React, { forwardRef, useRef, useMemo, useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
+import dayjs from 'dayjs';
+import { supabase } from '../supabase/client';
+import { type Member } from '../types/Member';
 
-interface TableProps {
-    jumlahJenjang: any;
-    jumlahKK: Record<string, number>;
-    jumlahDuafa: Record<string, number>;
-    jumlahBinaan: any;
-    loading: boolean;
+// --- Interfaces ---
+interface TableProps {}
+
+interface SensusMetrics {
+    balita_l: Member[]; balita_p: Member[];
+    paud_l: Member[]; paud_p: Member[];
+    caberawit_l: Member[]; caberawit_p: Member[];
+    praremaja_l: Member[]; praremaja_p: Member[];
+    remaja_l: Member[]; remaja_p: Member[];
+    pranikah_l: Member[]; pranikah_p: Member[];
+    menikah_l: Member[]; menikah_p: Member[];
+    duda: Member[]; janda: Member[];
 }
 
-const TabelSensus = forwardRef<HTMLDivElement, TableProps>(({ jumlahJenjang, jumlahKK, jumlahDuafa, jumlahBinaan, loading }, ref) => {
-    // We'll use a local ref to ensure we can always access the div
-    const contentRef = useRef<HTMLDivElement>(null);
+type GroupedCategories = {
+    balita_l: any[]; balita_p: any[];
+    paud_l: any[]; paud_p: any[];
+    caberawit_l: any[]; caberawit_p: any[];
+    praremaja_l: any[]; praremaja_p: any[];
+    remaja_l: any[]; remaja_p: any[];
+    pranikah_l: any[]; pranikah_p: any[];
+    menikah_l: any[]; menikah_p: any[];
+    duda: any[]; janda: any[];
+};
 
-    const handleDownloadPDF = () => {
-        const input = (ref as React.RefObject<HTMLDivElement>)?.current || contentRef.current;
-        if (input) {
-            // Opsi untuk meningkatkan kualitas gambar
-            html2canvas(input, { scale: 2, useCORS: true })
-                .then((canvas) => {
-                    const imgData = canvas.toDataURL('image/png');
+type GroupedData = {
+    kelompok1: GroupedCategories;
+    kelompok2: GroupedCategories;
+    kelompok3: GroupedCategories;
+    kelompok4: GroupedCategories;
+    kelompok5: GroupedCategories;
+};
 
-                    // Gunakan orientasi landscape ('l'), unit 'pt', dan format 'a4'
-                    const pdf = new jsPDF('l', 'pt', 'a4');
+// --- Helper Functions ---
+const createEmptyMetrics = (): SensusMetrics => ({
+    balita_l: [], balita_p: [],
+    paud_l: [], paud_p: [],
+    caberawit_l: [], caberawit_p: [],
+    praremaja_l: [], praremaja_p: [],
+    remaja_l: [], remaja_p: [],
+    pranikah_l: [], pranikah_p: [],
+    menikah_l: [], menikah_p: [],
+    duda: [], janda: []
+});
 
-                    // Dapatkan dimensi halaman PDF
-                    const pdfWidth = pdf.internal.pageSize.getWidth();
+const calculateAge = (dob: string | null) => {
+    if (!dob) return 0;
+    return dayjs().diff(dayjs(dob), 'year');
+};
 
-                    // Dapatkan dimensi gambar dari canvas
-                    const canvasWidth = canvas.width;
-                    const canvasHeight = canvas.height;
+const processSensusData = (members: Member[]) => {
+    const g1 = createEmptyMetrics();
+    const stats = {
+        jumlahKK: 0,
+        jumlahDuafa: { keluarga: 0, jiwa: 0 },
+        jumlahBinaan: { l: 0, p: 0 }
+    };
+    const kkSet = new Set<string>();
 
-                    // Hitung rasio aspek gambar untuk menghindari distorsi
-                    const ratio = canvasWidth / canvasHeight;
+    members.forEach(m => {
+        const gender = (m.gender || '').toLowerCase().trim();
+        const isLaki = gender === 'laki - laki' || gender === 'Laki - Laki' ;
+        const status = (m.marriage_status || '').toLowerCase().trim();
+        const level = (m.level || '').toLowerCase().trim();
 
-                    // Skalakan gambar agar sesuai dengan LEBAR PDF
-                    const widthInPdf = pdfWidth - 40; // Beri sedikit margin 20pt di kiri dan kanan
-                    const heightInPdf = widthInPdf / ratio;
+        if (status === 'menikah') {
+            isLaki ? g1.menikah_l.push(m) : g1.menikah_p.push(m);
+        } else if (status === 'duda') {
+            g1.duda.push(m);
+        } else if (status === 'janda') {
+            g1.janda.push(m);
+        } else {
+            if (level.includes('batita')) {
+                isLaki ? g1.balita_l.push(m) : g1.balita_p.push(m);
+            } else if (level.includes('paud')) {
+                isLaki ? g1.paud_l.push(m) : g1.paud_p.push(m);
+            } else if (level.includes('cabe rawit') ) {
+                isLaki ? g1.caberawit_l.push(m) : g1.caberawit_p.push(m);
+            } else if (level.includes('pra remaja') ) {
+                isLaki ? g1.praremaja_l.push(m) : g1.praremaja_p.push(m);
+            } else if (level.includes('remaja')) {
+                isLaki ? g1.remaja_l.push(m) : g1.remaja_p.push(m);
+            } else if (level.includes('pra nikah') || (level.includes('dewasa') && status === 'belum menikah')) {
+                isLaki ? g1.pranikah_l.push(m) : g1.pranikah_p.push(m);
+            }
+        }
 
-                    const xPosition = 20; // Posisi X dengan margin 20pt
-                    const yPosition = 20; // Posisi Y dengan margin 20pt
+        if (m.is_educate) isLaki ? stats.jumlahBinaan.l++ : stats.jumlahBinaan.p++;
+        if (m.is_duafa) stats.jumlahDuafa.jiwa++;
+        
+        if (m.id_family) {
+            const familyIdStr = String(m.id_family);
+            if (!kkSet.has(familyIdStr)) {
+                kkSet.add(familyIdStr);
+                stats.jumlahKK++;
+                if (m.is_duafa) stats.jumlahDuafa.keluarga++;
+            }
+        }
+    });
+console.log(g1);
 
-                    // Tambahkan gambar ke PDF dengan dimensi yang sudah dihitung
-                    pdf.addImage(imgData, 'PNG', xPosition, yPosition, widthInPdf, heightInPdf);
-                    pdf.save('laporan-sensus.pdf');
-                });
+    const totalL = g1.balita_l.length + g1.paud_l.length + g1.caberawit_l.length + g1.praremaja_l.length + g1.remaja_l.length + g1.pranikah_l.length + g1.menikah_l.length + g1.duda.length;
+    const totalP = g1.balita_p.length + g1.paud_p.length + g1.caberawit_p.length + g1.praremaja_p.length + g1.remaja_p.length + g1.pranikah_p.length + g1.menikah_p.length + g1.janda.length;
+
+    return { g1, stats, totalL, totalP, totalAll: totalL + totalP };
+};
+
+// --- KOMPONEN UTAMA ---
+const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_, ref) => {
+    const printRef = useRef<HTMLDivElement>(null);
+    const [members, setMembers] = useState<Member[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // states for sheetdb data
+    const [groupedData, setGroupedData] = useState<GroupedData | null>(null);
+    const [totalsDesa, setTotalsDesa] = useState<Record<string, number> | null>(null);
+    const [countKK, setCountKK] = useState<Record<string, number>>({});
+    const [countBinaan, setCountBinaan] = useState<Record<string, { l: number; p: number }>>({});
+    const [countDuafa, setCountDuafa] = useState<Record<string, number> | null>(null);
+
+    // fetch supabase members (kept for backward compatibility / fallback)
+    useEffect(() => {
+        const fetchMembers = async () => {
+            setLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('list_sensus')
+                    .select('*')
+                    .eq('is_active', true);
+
+                if (error) throw error;
+                if (data) setMembers(data as Member[]);
+            } catch (err: any) {
+                console.error("Gagal ambil data:", err);
+                // keep user-friendly notification
+                // don't throw since sheetdb might still supply data
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchMembers();
+    }, []);
+
+    // helper default empty groupedData
+    const emptyGroup = (): GroupedCategories => ({
+        balita_l: [], balita_p: [],
+        paud_l: [], paud_p: [],
+        caberawit_l: [], caberawit_p: [],
+        praremaja_l: [], praremaja_p: [],
+        remaja_l: [], remaja_p: [],
+        pranikah_l: [], pranikah_p: [],
+        menikah_l: [], menikah_p: [],
+        duda: [], janda: []
+    });
+
+    // --- SheetDB fetchers (converted to async/await + safer parsing) ---
+    const downloadDataKK = async () => {
+        try {
+            const params = "DATA KK DESA";
+            const res = await fetch(`https://sheetdb.io/api/v1/uijf2hx2kvi0k?sheet=${encodeURIComponent(params)}`);
+            if (!res.ok) throw new Error('Network response was not ok');
+            const data = await res.json();
+            const grouped = data.reduce((acc: Record<string, any[]>, item: any) => {
+                const kelompokKey = item.KELOMPOK || 'Tidak Diketahui';
+                if (!acc[kelompokKey]) acc[kelompokKey] = [];
+                acc[kelompokKey].push(item);
+                return acc;
+            }, {});
+            const kelompokCounts = Object.keys(grouped).reduce((acc: Record<string, number>, kelompok: string) => {
+                acc[kelompok] = grouped[kelompok]?.length ?? 0;
+                return acc;
+            }, {});
+            setCountKK(kelompokCounts);
+        } catch (error) {
+            console.error('downloadDataKK error', error);
         }
     };
 
-    if (loading) {
-        const jumlahKartuKeluargaK1 = jumlahKK["Kelompok 1"] ? jumlahKK["Kelompok 1"] : 0;
-        const jumlahKartuKeluargaK2 = jumlahKK["Kelompok 2"] ? jumlahKK["Kelompok 2"] : 0;
-        const jumlahKartuKeluargaK3 = jumlahKK["Kelompok 3"] ? jumlahKK["Kelompok 3"] : 0;
-        const jumlahKartuKeluargaK4 = jumlahKK["Kelompok 4"] ? jumlahKK["Kelompok 4"] : 0;
-        const jumlahKartuKeluargaK5 = jumlahKK["Kelompok 5"] ? jumlahKK["Kelompok 5"] : 0;
+    const downloadDataBinaan = async () => {
+        try {
+            const params = "DATA BINAAN DESA";
+            const res = await fetch(`https://sheetdb.io/api/v1/uijf2hx2kvi0k?sheet=${encodeURIComponent(params)}`);
+            if (!res.ok) throw new Error('Network response was not ok');
+            const data = await res.json();
+            const processedData: Record<string, { l: number; p: number }> = {
+                kelompok1: { l: 0, p: 0 },
+                kelompok2: { l: 0, p: 0 },
+                kelompok3: { l: 0, p: 0 },
+                kelompok4: { l: 0, p: 0 },
+                kelompok5: { l: 0, p: 0 }
+            };
+            data.forEach((item: { KELOMPOK: string; "JENIS KELAMIN": string }) => {
+                if (!item.KELOMPOK) return;
+                const key = item.KELOMPOK.toLowerCase().replace(/\s+/g, ''); // e.g. "Kelompok 1" -> "kelompok1"
+                const mapKey = `kelompok${key.replace(/[^0-9]/g, '')}`; // attempt safe map to kelompok1..5
+                if (!processedData[mapKey]) return;
+                if (item["JENIS KELAMIN"] === 'Laki - Laki') {
+                    processedData[mapKey].l++;
+                } else if (item["JENIS KELAMIN"] === 'Perempuan') {
+                    processedData[mapKey].p++;
+                }
+            });
+            setCountBinaan(processedData);
+        } catch (error) {
+            console.error('downloadDataBinaan error', error);
+        }
+    };
 
-        const jumlahBinaanKelompok1 = jumlahBinaan?.kelompok1.l + jumlahBinaan?.kelompok1.p;
-        const jumlahBinaanKelompok2 = jumlahBinaan?.kelompok2.l + jumlahBinaan?.kelompok2.p;
-        const jumlahBinaanKelompok3 = jumlahBinaan?.kelompok3.l + jumlahBinaan?.kelompok3.p;
-        const jumlahBinaanKelompok4 = jumlahBinaan?.kelompok4.l + jumlahBinaan?.kelompok4.p;
-        const jumlahBinaanKelompok5 = jumlahBinaan?.kelompok5.l + jumlahBinaan?.kelompok5.p;
-        const jumlahBinaanLaki = jumlahBinaan?.kelompok1.l + jumlahBinaan?.kelompok2.l + jumlahBinaan?.kelompok3.l + jumlahBinaan?.kelompok4.l + jumlahBinaan?.kelompok5.l;
-        const jumlahBinaanPerempuan = jumlahBinaan?.kelompok1.p + jumlahBinaan?.kelompok2.p + jumlahBinaan?.kelompok3.p + jumlahBinaan?.kelompok4.p + jumlahBinaan?.kelompok5.p;
-        const totalKeluargaDuafa = jumlahDuafa?.totalKeluargaKelompok1 + jumlahDuafa?.totalKeluargaKelompok2 + jumlahDuafa?.totalKeluargaKelompok3 + jumlahDuafa?.totalKeluargaKelompok4 + jumlahDuafa?.totalKeluargaKelompok5;
-        const totalJiwaDuafa = jumlahDuafa?.totalJiwaKelompok1 + jumlahDuafa?.totalJiwaKelompok2 + jumlahDuafa?.totalJiwaKelompok3 + jumlahDuafa?.totalJiwaKelompok4 + jumlahDuafa?.totalJiwaKelompok5;
-        const totalLakiDesa = jumlahJenjang?.totalBalita_lDesa + jumlahJenjang?.totalPaud_lDesa + jumlahJenjang?.totalCaberawit_lDesa + jumlahJenjang?.totalPraremaja_lDesa + jumlahJenjang?.totalRemaja_lDesa + jumlahJenjang?.totalPraNikah_lDesa + jumlahJenjang?.totalMenikah_lDesa + jumlahJenjang?.totalDudaDesa;
-        const totalPerempuanDesa = jumlahJenjang?.totalBalita_pDesa + jumlahJenjang?.totalPaud_pDesa + jumlahJenjang?.totalCaberawit_pDesa + jumlahJenjang?.totalPraremaja_pDesa + jumlahJenjang?.totalRemaja_pDesa + jumlahJenjang?.totalPraNikah_pDesa + jumlahJenjang?.totalMenikah_pDesa + jumlahJenjang?.totalJandaDesa;
-        const totalKeseluruhanKK = jumlahKartuKeluargaK1 + jumlahKartuKeluargaK2 + jumlahKartuKeluargaK3 + jumlahKartuKeluargaK4 + jumlahKartuKeluargaK5;
-        const totalKeselurhanSensus = jumlahJenjang?.totalKeseluruhanKelompok1 + jumlahJenjang?.totalKeseluruhanKelompok2 + jumlahJenjang?.totalKeseluruhanKelompok3 + jumlahJenjang?.totalKeseluruhanKelompok4 + jumlahJenjang?.totalKeseluruhanKelompok5;
+    type ProcessedDuafa = {
+        totalJiwaKelompok1: number; totalKeluargaKelompok1: number;
+        totalJiwaKelompok2: number; totalKeluargaKelompok2: number;
+        totalJiwaKelompok3: number; totalKeluargaKelompok3: number;
+        totalJiwaKelompok4: number; totalKeluargaKelompok4: number;
+        totalJiwaKelompok5: number; totalKeluargaKelompok5: number;
+    };
 
-        return (
-            <div>
-                <div style={{ textAlign: 'center', margin: '20px' }}>
-                    <button
-                        onClick={handleDownloadPDF}
-                        style={{
-                            padding: '10px 20px',
-                            fontSize: '16px',
-                            cursor: 'pointer',
-                            backgroundColor: '#007bff',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px'
-                        }}
-                    >
-                        Download as PDF
-                    </button>
-                </div>
-                {/* Assign the local ref to this div */}
-                <div ref={(node) => {
-                    contentRef.current = node;
-                    if (typeof ref === 'function') {
-                        ref(node);
-                    } else if (ref) {
-                        ref.current = node;
+    const downloadDataDuafa = async () => {
+        try {
+            const params = "DATA DUAFA DESA";
+            const res = await fetch(`https://sheetdb.io/api/v1/uijf2hx2kvi0k?sheet=${encodeURIComponent(params)}`);
+            if (!res.ok) throw new Error('Network response was not ok');
+            const data = await res.json();
+            const result: any = {
+                totalJiwaKelompok1: 0, totalKeluargaKelompok1: 0,
+                totalJiwaKelompok2: 0, totalKeluargaKelompok2: 0,
+                totalJiwaKelompok3: 0, totalKeluargaKelompok3: 0,
+                totalJiwaKelompok4: 0, totalKeluargaKelompok4: 0,
+                totalJiwaKelompok5: 0, totalKeluargaKelompok5: 0
+            };
+            const familyCounts: { [key: string]: { [family: string]: boolean } } = {};
+
+            data.forEach((item: any) => {
+                const kelompok = item.KELOMPOK || 'Kelompok 1';
+                const groupNum = (kelompok.match(/\d+/)?.[0]) ?? '1'; // fallback to 1
+                const groupKey = `totalJiwaKelompok${groupNum}`;
+                const familyGroupKey = `totalKeluargaKelompok${groupNum}`;
+                const familyKey = item["NAMA KELUARGA"] || `${Math.random()}`;
+
+                if (result[groupKey] !== undefined) result[groupKey]++;
+
+                if (!familyCounts[kelompok]) familyCounts[kelompok] = {};
+                if (!familyCounts[kelompok][familyKey]) {
+                    familyCounts[kelompok][familyKey] = true;
+                    if (result[familyGroupKey] !== undefined) result[familyGroupKey]++;
+                }
+            });
+
+            setCountDuafa(result);
+        } catch (error) {
+            console.error('downloadDataDuafa error', error);
+        }
+    };
+
+    // Download and group Sensus per kelompok (kelompok1..kelompok5)
+    const downloadDataSensus = async () => {
+        try {
+            const params = "DATA JAMAAH DESA";
+            const res = await fetch(`https://sheetdb.io/api/v1/uijf2hx2kvi0k?sheet=${encodeURIComponent(params)}`);
+            if (!res.ok) throw new Error('Network response was not ok');
+            const data = await res.json();
+
+            // prepare grouped structure
+            const createGroupedData = (): GroupedData => ({
+                kelompok1: JSON.parse(JSON.stringify(emptyGroup())),
+                kelompok2: JSON.parse(JSON.stringify(emptyGroup())),
+                kelompok3: JSON.parse(JSON.stringify(emptyGroup())),
+                kelompok4: JSON.parse(JSON.stringify(emptyGroup())),
+                kelompok5: JSON.parse(JSON.stringify(emptyGroup()))
+            });
+
+            const grouped: GroupedData = createGroupedData();
+
+            // filter out non-active or luar daerah
+            const filteredData = (data || []).filter((item: any) => {
+                const sp = item["STATUS PONDOK"] ?? '';
+                const sa = item["STATUS AKTIF"] ?? '';
+                return sp !== "Luar Daerah" && sa !== "Tidak Aktif";
+            });
+
+            filteredData.forEach((person: any) => {
+                const KELOMPOK = person.KELOMPOK || 'Kelompok 1';
+                const JENJANG = person.JENJANG || '';
+                const JENIS_KELAMIN = person["JENIS KELAMIN"] || '';
+                const STATUS_PERNIKAHAN = person["STATUS PERNIKAHAN"] || '';
+
+                if (KELOMPOK && KELOMPOK.startsWith("Kelompok ")) {
+                    const groupNumber = parseInt(KELOMPOK.split(" ")[1]);
+                    if (groupNumber >= 1 && groupNumber <= 5) {
+                        const groupKey = `kelompok${groupNumber}` as keyof GroupedData;
+                        const categories = grouped[groupKey];
+
+                        if (JENJANG === "Balita") {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.balita_l.push(person) : categories.balita_p.push(person);
+                        } else if (JENJANG === "Paud") {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.paud_l.push(person) : categories.paud_p.push(person);
+                        } else if (JENJANG === "Caberawit") {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.caberawit_l.push(person) : categories.caberawit_p.push(person);
+                        } else if (JENJANG === "Pra Remaja") {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.praremaja_l.push(person) : categories.praremaja_p.push(person);
+                        } else if (JENJANG === "Remaja") {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.remaja_l.push(person) : categories.remaja_p.push(person);
+                        } else if (JENJANG === "Pra Nikah" || (JENJANG === "Dewasa" && STATUS_PERNIKAHAN === "Belum Menikah")) {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.pranikah_l.push(person) : categories.pranikah_p.push(person);
+                        } else if ((JENJANG === "Lansia" && STATUS_PERNIKAHAN === "Menikah") || (JENJANG === "Dewasa" && STATUS_PERNIKAHAN === "Menikah")) {
+                            JENIS_KELAMIN === "Laki - Laki" ? categories.menikah_l.push(person) : categories.menikah_p.push(person);
+                        }
+
+                        if (STATUS_PERNIKAHAN === "Janda") categories.janda.push(person);
+                        else if (STATUS_PERNIKAHAN === "Duda") categories.duda.push(person);
                     }
-                }}>
-                    <table style={{ borderCollapse: 'collapse', margin: 'auto' }}>
-                        {/* THE REST OF YOUR TABLE JSX REMAINS UNCHANGED */}
+                }
+            });
+
+            // compute totals for desa
+            const kelompokKeys = ['kelompok1','kelompok2','kelompok3','kelompok4','kelompok5'] as const;
+            const totals: Record<string, number> = {};
+
+            const sumFor = (cat: keyof GroupedCategories) =>
+                kelompokKeys.reduce((s, g) => s + (grouped[g as keyof GroupedData][cat]?.length || 0), 0);
+
+            totals.totalBalita_lDesa = sumFor('balita_l');
+            totals.totalBalita_pDesa = sumFor('balita_p');
+            totals.totalPaud_lDesa = sumFor('paud_l');
+            totals.totalPaud_pDesa = sumFor('paud_p');
+            totals.totalCaberawit_lDesa = sumFor('caberawit_l');
+            totals.totalCaberawit_pDesa = sumFor('caberawit_p');
+            totals.totalPraremaja_lDesa = sumFor('praremaja_l');
+            totals.totalPraremaja_pDesa = sumFor('praremaja_p');
+            totals.totalRemaja_lDesa = sumFor('remaja_l');
+            totals.totalRemaja_pDesa = sumFor('remaja_p');
+            totals.totalPraNikah_lDesa = sumFor('pranikah_l');
+            totals.totalPraNikah_pDesa = sumFor('pranikah_p');
+            totals.totalMenikah_lDesa = sumFor('menikah_l');
+            totals.totalMenikah_pDesa = sumFor('menikah_p');
+            totals.totalDudaDesa = sumFor('duda');
+            totals.totalJandaDesa = sumFor('janda');
+
+            setGroupedData(grouped);
+            setTotalsDesa(totals);
+        } catch (error) {
+            console.error('downloadDataSensus error', error);
+        }
+    };
+
+    // call SheetDB fetchers once on mount
+    useEffect(() => {
+        downloadDataKK();
+        downloadDataBinaan();
+        downloadDataDuafa();
+        downloadDataSensus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // For rendering: if groupedData exists use it; otherwise fallback to supabase-processed g1
+    const { g1, stats, totalL, totalP, totalAll } = useMemo(() => processSensusData(members), [members]);
+
+    // --- STYLING (WARNA TAILWIND) ---
+    const colors = {
+        table1: '#E2DFD0',
+        table2: '#FEB941',
+        table3: '#6DC5D1',
+        table4: '#ACE1AF',
+        table5: '#FDE49E',
+        white: '#FFFFFF',
+        border: '#000000'
+    };
+
+    const s = {
+        table: { borderCollapse: 'collapse' as const, width: '100%', fontFamily: 'Arial, Helvetica, sans-serif' },
+        th: {
+            border: `1px solid ${colors.border}`,
+            padding: '8px 4px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            textAlign: 'center' as const,
+            verticalAlign: 'middle',
+            color: 'black'
+        },
+        td: {
+            border: `1px solid ${colors.border}`,
+            padding: '6px 4px',
+            fontSize: '16px',
+            textAlign: 'center' as const,
+            verticalAlign: 'middle',
+            color: 'black',
+            height: '35px'
+        }
+    };
+
+    const wKelompok = '130px';
+    const wData = '50px';
+    const wTotal = '80px';
+    const wKK = '80px';
+    const wDuafa = '150px';
+    const wBinaan = '50px';
+
+    const handleDownloadPDF = async () => {
+        if (!printRef.current) return;
+
+        try {
+            const dataUrl = await toPng(printRef.current, {
+                cacheBust: true,
+                backgroundColor: 'white',
+                pixelRatio: 2,
+                width: printRef.current.scrollWidth,
+                height: printRef.current.scrollHeight,
+                style: { transform: 'none', margin: '0', overflow: 'visible' }
+            });
+
+            const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const imgProps = pdf.getImageProperties(dataUrl);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+
+            const margin = 10;
+            const availableWidth = pdfWidth - (margin * 2);
+            const availableHeight = pdfHeight - (margin * 2);
+
+            const ratio = Math.min(availableWidth / imgProps.width, availableHeight / imgProps.height);
+
+            const widthInPdf = imgProps.width * ratio;
+            const heightInPdf = imgProps.height * ratio;
+
+            const xPos = (pdfWidth - widthInPdf) / 2;
+            const yPos = margin;
+
+            pdf.addImage(dataUrl, 'PNG', xPos, yPos, widthInPdf, heightInPdf);
+            pdf.save(`Laporan_Sensus_${dayjs().format('MMMM_YYYY')}.pdf`);
+        } catch (err) {
+            console.error('Gagal generate PDF:', err);
+            alert('Gagal mendownload PDF. Silakan coba lagi.');
+        }
+    };
+
+    // Loading UX: if both sources not ready show loader
+    const isLoadingAll = loading && !groupedData;
+
+    if (isLoadingAll) return (
+        <div className="flex h-64 flex-col items-center justify-center gap-2">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-500"></div>
+            <p className="text-slate-500 font-medium">Memuat Data Laporan...</p>
+        </div>
+    );
+
+    // helper to read value for a group from groupedData or fallback to g1
+const readGroupValue = (groupIndex: number, category: keyof GroupedCategories) => {
+    // KELOMPOK 1 = SUPABASE
+    if (groupIndex === 1) {
+        switch (category) {
+            case 'balita_l': return g1.balita_l.length;
+            case 'balita_p': return g1.balita_p.length;
+            case 'paud_l': return g1.paud_l.length;
+            case 'paud_p': return g1.paud_p.length;
+            case 'caberawit_l': return g1.caberawit_l.length;
+            case 'caberawit_p': return g1.caberawit_p.length;
+            case 'praremaja_l': return g1.praremaja_l.length;
+            case 'praremaja_p': return g1.praremaja_p.length;
+            case 'remaja_l': return g1.remaja_l.length;
+            case 'remaja_p': return g1.remaja_p.length;
+            case 'pranikah_l': return g1.pranikah_l.length;
+            case 'pranikah_p': return g1.pranikah_p.length;
+            case 'menikah_l': return g1.menikah_l.length;
+            case 'menikah_p': return g1.menikah_p.length;
+            case 'duda': return g1.duda.length;
+            case 'janda': return g1.janda.length;
+            default: return 0;
+        }
+    }
+
+    // KELOMPOK 2–5 = SHEETDB
+    if (!groupedData) return 0;
+
+    const key = `kelompok${groupIndex}` as keyof GroupedData;
+    return groupedData[key]?.[category]?.length ?? 0;
+};
+
+
+    const readGroupTotalL = (groupIndex: number) => {
+        const cats: (keyof GroupedCategories)[] = ['balita_l','paud_l','caberawit_l','praremaja_l','remaja_l','pranikah_l','menikah_l','duda'];
+        return cats.reduce((s, c) => s + readGroupValue(groupIndex, c), 0);
+    };
+    const readGroupTotalP = (groupIndex: number) => {
+        const cats: (keyof GroupedCategories)[] = ['balita_p','paud_p','caberawit_p','praremaja_p','remaja_p','pranikah_p','menikah_p','janda'];
+        return cats.reduce((s, c) => s + readGroupValue(groupIndex, c), 0);
+    };
+    const readGroupTotalAll = (groupIndex: number) => readGroupTotalL(groupIndex) + readGroupTotalP(groupIndex);
+
+    // totals for desa prefer totalsDesa (sheet) else fallback to computed from supabase g1
+    const desaTotals = totalsDesa ?? {
+        totalBalita_lDesa: readGroupValue(1, 'balita_l'),
+        totalBalita_pDesa: readGroupValue(1, 'balita_p'),
+        totalPaud_lDesa: readGroupValue(1, 'paud_l'),
+        totalPaud_pDesa: readGroupValue(1, 'paud_p'),
+        totalCaberawit_lDesa: readGroupValue(1, 'caberawit_l'),
+        totalCaberawit_pDesa: readGroupValue(1, 'caberawit_p'),
+        totalPraremaja_lDesa: readGroupValue(1, 'praremaja_l'),
+        totalPraremaja_pDesa: readGroupValue(1, 'praremaja_p'),
+        totalRemaja_lDesa: readGroupValue(1, 'remaja_l'),
+        totalRemaja_pDesa: readGroupValue(1, 'remaja_p'),
+        totalPraNikah_lDesa: readGroupValue(1, 'pranikah_l'),
+        totalPraNikah_pDesa: readGroupValue(1, 'pranikah_p'),
+        totalMenikah_lDesa: readGroupValue(1, 'menikah_l'),
+        totalMenikah_pDesa: readGroupValue(1, 'menikah_p'),
+        totalDudaDesa: readGroupValue(1, 'duda'),
+        totalJandaDesa: readGroupValue(1, 'janda')
+    };
+
+    return (
+        <div className="w-full">
+            <div className="text-center my-6">
+                <button
+                    onClick={handleDownloadPDF}
+                    className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 transition-colors"
+                >
+                    Download Laporan PDF
+                </button>
+            </div>
+
+            <div className="w-full overflow-x-auto pb-6 px-2 sm:px-4">
+                <div
+                    ref={printRef}
+                    style={{
+                        minWidth: '2000px',
+                        width: '2000px',
+                        backgroundColor: 'white',
+                        padding: '40px',
+                        margin: '0 auto'
+                    }}
+                >
+                    <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                        <h3 style={{ margin: 0, fontSize: '32px', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'Arial, sans-serif' }}>
+                            DAFTAR SENSUS DESA KELAPA DUA
+                        </h3>
+                        <h3 style={{ margin: '8px 0 0 0', fontSize: '24px', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'Arial, sans-serif' }}>
+                            BULAN {new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                        </h3>
+                    </div>
+
+                    <table style={s.table}>
                         <thead>
                             <tr>
-                                <th colSpan={25} style={{ textAlign: 'center', padding: '10px 0' }}>
-                                    <h3 style={{ margin: 0 }}>DAFTAR SENSUS DESA KELAPA DUA</h3>
-                                    <h3 style={{ margin: 0 }}>BULAN {new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }).toUpperCase()}</h3>
-                                </th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1, width: wKelompok }} rowSpan={3}>Kelompok</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={12}>Belum Menikah</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table3 }} colSpan={2} rowSpan={2}>Menikah</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1 }} colSpan={2} rowSpan={2}>Duda / Janda</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1 }} colSpan={2} rowSpan={2}>Jumlah</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table4, width: wTotal }} rowSpan={3}>Total</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1, width: wKK }} rowSpan={3}>Jumlah <br /> KK</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1, width: wDuafa }} rowSpan={3}>Duafa</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1 }} colSpan={2} rowSpan={2}>Binaan</th>
                             </tr>
-                            <tr style={{ fontSize: 14, border: '1px solid black', }}>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' rowSpan={3}>Kelompok</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={12}>Belum Menikah</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-3' colSpan={2} rowSpan={2}>Menikah</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' colSpan={2} rowSpan={2}>Duda / Janda</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' colSpan={2} rowSpan={2}>Jumlah</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-4' rowSpan={3}>Total</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' rowSpan={3}>
-                                    Jumlah <br /> KK
-                                </th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' rowSpan={3}>Duafa</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' colSpan={2} rowSpan={2}>Binaan</th>
+                            <tr>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={2}>Balita</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={2}>Paud</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={2}>Caberawit</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={2}>Pra Remaja</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={2}>Remaja</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table2 }} colSpan={2}>Dewasa</th>
                             </tr>
-                            <tr style={{ fontSize: 14, border: '1px solid black' }}>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={2}>Balita</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={2}>Paud</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={2}>Caberawit</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={2}>Pra Remaja</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={2}>Remaja</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' colSpan={2}>Dewasa</th>
-                            </tr>
-                            <tr style={{ fontSize: 14, border: '1px solid black' }}>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-2' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-3' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-3' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' >P</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' >L</th>
-                                <th style={{ border: '1px solid black' }} className='color-table-1' >P</th>
-
+                            <tr>
+                                {[...Array(6)].map((_, i) => (
+                                    <React.Fragment key={i}>
+                                        <th style={{ ...s.th, backgroundColor: colors.table2, width: wData }}>L</th>
+                                        <th style={{ ...s.th, backgroundColor: colors.table2, width: wData }}>P</th>
+                                    </React.Fragment>
+                                ))}
+                                <th style={{ ...s.th, backgroundColor: colors.table3, width: wData }}>L</th><th style={{ ...s.th, backgroundColor: colors.table3, width: wData }}>P</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1, width: wData }}>L</th><th style={{ ...s.th, backgroundColor: colors.table1, width: wData }}>P</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1, width: '60px' }}>L</th><th style={{ ...s.th, backgroundColor: colors.table1, width: '60px' }}>P</th>
+                                <th style={{ ...s.th, backgroundColor: colors.table1, width: wBinaan }}>L</th><th style={{ ...s.th, backgroundColor: colors.table1, width: wBinaan }}>P</th>
                             </tr>
                         </thead>
-                        <tbody style={{ fontSize: 14, border: '1px solid black', textAlign: 'center' }}>
-                            <tr style={{ border: '1px solid black' }}>
-                                <td style={{ border: '1px solid black', width: 100, height: 20 }}>Kelompok 1</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.balita_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.balita_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.paud_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.paud_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.caberawit_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.caberawit_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.praremaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.praremaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.remaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.remaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.pranikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.pranikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.menikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.menikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.duda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok1.janda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalLakiKelompok1}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalPerempuanKelompok1}</td>
-                                <td rowSpan={2} className='color-table-4' style={{ border: '1px solid black', width: 50, fontWeight: 'bold' }}>{jumlahJenjang.totalKeseluruhanKelompok1}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black', width: 50 }}>{jumlahKartuKeluargaK1}</td>
-                                <td rowSpan={10} style={{ border: '1px solid black', width: 60 }}>
-                                    {totalKeluargaDuafa} KK <br />
-                                    {totalJiwaDuafa} Jiwa <br />
-                                    ---- <br />
-                                    Kel 1: {jumlahDuafa.totalJiwaKelompok1}<br />
-                                    Kel 2: {jumlahDuafa.totalJiwaKelompok2}<br />
-                                    Kel 3: {jumlahDuafa.totalJiwaKelompok3}<br />
-                                    Kel 4: {jumlahDuafa.totalJiwaKelompok4}<br />
-                                    Kel 5: {jumlahDuafa.totalJiwaKelompok5}<br />
+                        <tbody>
+                            {/* --- KELOMPOK 1 (DATA) --- */}
+                            <tr>
+                                <td style={s.td}>Kelompok 1</td>
+                                <td style={s.td}>{readGroupValue(1, 'balita_l')}</td><td style={s.td}>{readGroupValue(1, 'balita_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'paud_l')}</td><td style={s.td}>{readGroupValue(1, 'paud_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'caberawit_l')}</td><td style={s.td}>{readGroupValue(1, 'caberawit_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'praremaja_l')}</td><td style={s.td}>{readGroupValue(1, 'praremaja_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'remaja_l')}</td><td style={s.td}>{readGroupValue(1, 'remaja_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'pranikah_l')}</td><td style={s.td}>{readGroupValue(1, 'pranikah_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'menikah_l')}</td><td style={s.td}>{readGroupValue(1, 'menikah_p')}</td>
+                                <td style={s.td}>{readGroupValue(1, 'duda')}</td><td style={s.td}>{readGroupValue(1, 'janda')}</td>
+                                <td style={s.td}>{readGroupTotalL(1)}</td><td style={s.td}>{readGroupTotalP(1)}</td>
+
+                                <td rowSpan={2} style={{ ...s.td, backgroundColor: colors.table4, fontWeight: 'bold' }}>{(groupedData ? readGroupTotalAll(1) + (groupedData ? 0 : totalAll) : totalAll)}</td>
+                                <td rowSpan={2} style={s.td}>{countKK['Kelompok 1'] ?? countKK['Kelompok 1'] ?? stats.jumlahKK}</td>
+
+                                {/* Duafa block (single cell spanning many rows)
+                                    If countDuafa exists we show per-kelompok jiwa/kk values inside this block.
+                                */}
+                                <td rowSpan={10} style={{ ...s.td, textAlign: 'left', padding: '10px', verticalAlign: 'top', fontSize: '14px', lineHeight: '1.4' }}>
+                                    <div style={{ fontWeight: 'bold' }}>{countDuafa?.totalKeluargaKelompok1 ?? (stats.jumlahDuafa.keluarga ?? 0)} KK</div>
+                                    <div style={{ fontWeight: 'bold' }}>{countDuafa?.totalJiwaKelompok1 ?? (stats.jumlahDuafa.jiwa ?? 0)} Jiwa</div>
+                                    <div style={{ borderTop: '2px dashed #666', margin: '8px 0' }}></div>
+                                    <div>Kel 1: {countDuafa?.totalJiwaKelompok1 ?? (stats.jumlahDuafa.jiwa ?? 0)}</div>
+                                    <div>Kel 2: {countDuafa?.totalJiwaKelompok2 ?? 0}</div>
+                                    <div>Kel 3: {countDuafa?.totalJiwaKelompok3 ?? 0}</div>
+                                    <div>Kel 4: {countDuafa?.totalJiwaKelompok4 ?? 0}</div>
+                                    <div>Kel 5: {countDuafa?.totalJiwaKelompok5 ?? 0}</div>
                                 </td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok1.l}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok1.p}</td>
+
+                                <td style={s.td}>{countBinaan?.kelompok1?.l ?? countBinaan?.kelompok1?.l ?? (stats.jumlahBinaan.l ?? 0)}</td>
+                                <td style={s.td}>{countBinaan?.kelompok1?.p ?? countBinaan?.kelompok1?.p ?? (stats.jumlahBinaan.p ?? 0)}</td>
                             </tr>
-                            <tr style={{ border: '1px solid black' }}>
-                                <td style={{ border: '1px solid black', height: 20 }} className='color-table-5'>Jumlah</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalBalitaLKelompok1 + jumlahJenjang.totalBalitaPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPaudLKelompok1 + jumlahJenjang.totalPaudPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalCabeRawitLKelompok1 + jumlahJenjang.totalCabeRawitPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraRemajaLKelompok1 + jumlahJenjang.totalPraRemajaPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalRemajaLKelompok1 + jumlahJenjang.totalRemajaPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraNikahLKelompok1 + jumlahJenjang.totalPraNikahPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalMenikahLKelompok1 + jumlahJenjang.totalMenikahPKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalDudaKelompok1 + jumlahJenjang.totalJandaKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalLakiKelompok1 + jumlahJenjang.totalPerempuanKelompok1}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahBinaanKelompok1}</td>
+                            <tr style={{ backgroundColor: colors.table5 }}>
+                                <td style={{ ...s.td, fontWeight: 'bold' }}>Jumlah</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'balita_l') + readGroupValue(1, 'balita_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'paud_l') + readGroupValue(1, 'paud_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'caberawit_l') + readGroupValue(1, 'caberawit_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'praremaja_l') + readGroupValue(1, 'praremaja_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'remaja_l') + readGroupValue(1, 'remaja_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'pranikah_l') + readGroupValue(1, 'pranikah_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'menikah_l') + readGroupValue(1, 'menikah_p')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupValue(1, 'duda') + readGroupValue(1, 'janda')}</td>
+                                <td colSpan={2} style={s.td}>{readGroupTotalAll(1)}</td>
+                                <td colSpan={2} style={s.td}>{(countBinaan?.kelompok1?.l ?? 0) + (countBinaan?.kelompok1?.p ?? 0)}</td>
                             </tr>
 
-                            <tr style={{ border: '1px solid black', }}>
-                                <td style={{ border: '1px solid black', width: 100, height: 20 }}>Kelompok 2</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.balita_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.balita_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.paud_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.paud_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.caberawit_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.caberawit_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.praremaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.praremaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.remaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.remaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.pranikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.pranikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.menikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.menikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.duda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok2.janda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalLakiKelompok2}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalPerempuanKelompok2}</td>
-                                <td rowSpan={2} className='color-table-4' style={{ border: '1px solid black', width: 50, fontWeight: 'bold' }}>{jumlahJenjang.totalKeseluruhanKelompok2}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }}>{jumlahKartuKeluargaK2}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok2.l}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok2.p}</td>
-                            </tr>
-                            <tr style={{ textAlign: 'center' }}>
-                                <td style={{ border: '1px solid black', height: 20 }} className='color-table-5'>Jumlah</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalBalitaLKelompok2 + jumlahJenjang.totalBalitaPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPaudLKelompok2 + jumlahJenjang.totalPaudPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalCabeRawitLKelompok2 + jumlahJenjang.totalCabeRawitPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraRemajaLKelompok2 + jumlahJenjang.totalPraRemajaPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalRemajaLKelompok2 + jumlahJenjang.totalRemajaPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraNikahLKelompok2 + jumlahJenjang.totalPraNikahPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalMenikahLKelompok2 + jumlahJenjang.totalMenikahPKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalDudaKelompok2 + jumlahJenjang.totalJandaKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalLakiKelompok2 + jumlahJenjang.totalPerempuanKelompok2}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahBinaanKelompok2}</td>
-                            </tr>
+                            {/* KELOMPOK 2 - 5 (data dari SheetDB jika tersedia, else zeros) */}
+                            {[2, 3, 4, 5].map(k => (
+                                <React.Fragment key={k}>
+                                    <tr>
+                                        <td style={s.td}>Kelompok {k}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'balita_l')}</td><td style={s.td}>{readGroupValue(k, 'balita_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'paud_l')}</td><td style={s.td}>{readGroupValue(k, 'paud_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'caberawit_l')}</td><td style={s.td}>{readGroupValue(k, 'caberawit_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'praremaja_l')}</td><td style={s.td}>{readGroupValue(k, 'praremaja_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'remaja_l')}</td><td style={s.td}>{readGroupValue(k, 'remaja_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'pranikah_l')}</td><td style={s.td}>{readGroupValue(k, 'pranikah_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'menikah_l')}</td><td style={s.td}>{readGroupValue(k, 'menikah_p')}</td>
+                                        <td style={s.td}>{readGroupValue(k, 'duda')}</td><td style={s.td}>{readGroupValue(k, 'janda')}</td>
+                                        <td style={s.td}>{readGroupTotalL(k)}</td><td style={s.td}>{readGroupTotalP(k)}</td>
 
-                            <tr style={{ border: '1px solid black' }}>
-                                <td style={{ border: '1px solid black', width: 100, height: 20 }}>Kelompok 3</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.balita_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.balita_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.paud_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.paud_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.caberawit_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.caberawit_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.praremaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.praremaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.remaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.remaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.pranikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.pranikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.menikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.menikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.duda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok3.janda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalLakiKelompok3}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalPerempuanKelompok3}</td>
-                                <td rowSpan={2} className='color-table-4' style={{ border: '1px solid black', width: 50, fontWeight: 'bold' }}>{jumlahJenjang.totalKeseluruhanKelompok3}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }}>{jumlahKartuKeluargaK3}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok3.l}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok3.p}</td>
-                            </tr>
-                            <tr style={{ textAlign: 'center' }}>
-                                <td style={{ border: '1px solid black', height: 20 }} className='color-table-5'>Jumlah</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalBalitaLKelompok3 + jumlahJenjang.totalBalitaPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPaudLKelompok3 + jumlahJenjang.totalPaudPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalCabeRawitLKelompok3 + jumlahJenjang.totalCabeRawitPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraRemajaLKelompok3 + jumlahJenjang.totalPraRemajaPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalRemajaLKelompok3 + jumlahJenjang.totalRemajaPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraNikahLKelompok3 + jumlahJenjang.totalPraNikahPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalMenikahLKelompok3 + jumlahJenjang.totalMenikahPKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalDudaKelompok3 + jumlahJenjang.totalJandaKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalLakiKelompok3 + jumlahJenjang.totalPerempuanKelompok3}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahBinaanKelompok3}</td>
-                            </tr>
-                            <tr>
-                                <td style={{ border: '1px solid black', width: 100, height: 20 }}>Kelompok 4</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.balita_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.balita_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.paud_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.paud_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.caberawit_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.caberawit_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.praremaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.praremaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.remaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.remaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.pranikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.pranikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.menikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.menikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.duda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok4.janda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalLakiKelompok4}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalPerempuanKelompok4}</td>
-                                <td rowSpan={2} className='color-table-4' style={{ border: '1px solid black', width: 50, fontWeight: 'bold' }}>{jumlahJenjang.totalKeseluruhanKelompok4}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }}>{jumlahKartuKeluargaK4}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok4.l}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok4.p}</td>
-                            </tr>
-                            <tr>
-                                <td style={{ border: '1px solid black', height: 20 }} className='color-table-5'>Jumlah</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalBalitaLKelompok4 + jumlahJenjang.totalBalitaPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPaudLKelompok4 + jumlahJenjang.totalPaudPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalCabeRawitLKelompok4 + jumlahJenjang.totalCabeRawitPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraRemajaLKelompok4 + jumlahJenjang.totalPraRemajaPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalRemajaLKelompok4 + jumlahJenjang.totalRemajaPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraNikahLKelompok4 + jumlahJenjang.totalPraNikahPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalMenikahLKelompok4 + jumlahJenjang.totalMenikahPKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalDudaKelompok4 + jumlahJenjang.totalJandaKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalLakiKelompok4 + jumlahJenjang.totalPerempuanKelompok4}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahBinaanKelompok4}</td>
-                            </tr>
+                                        <td rowSpan={2} style={{ ...s.td, backgroundColor: colors.table4, fontWeight: 'bold' }}>{readGroupTotalAll(k)}</td>
+                                        <td rowSpan={2} style={s.td}>{countKK[`Kelompok ${k}`] ?? 0}</td>
+                                        <td style={s.td}>{countBinaan?.[`kelompok${k}`]?.l ?? 0}</td>
+                                        <td style={s.td}>{countBinaan?.[`kelompok${k}`]?.p ?? 0}</td>
+                                    </tr>
+                                    <tr style={{ backgroundColor: colors.table5 }}>
+                                        <td style={{ ...s.td, fontWeight: 'bold' }}>Jumlah</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'balita_l') + readGroupValue(k, 'balita_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'paud_l') + readGroupValue(k, 'paud_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'caberawit_l') + readGroupValue(k, 'caberawit_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'praremaja_l') + readGroupValue(k, 'praremaja_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'remaja_l') + readGroupValue(k, 'remaja_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'pranikah_l') + readGroupValue(k, 'pranikah_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'menikah_l') + readGroupValue(k, 'menikah_p')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupValue(k, 'duda') + readGroupValue(k, 'janda')}</td>
+                                        <td colSpan={2} style={s.td}>{readGroupTotalAll(k)}</td>
+                                        <td colSpan={2} style={s.td}>{(countBinaan?.[`kelompok${k}`]?.l ?? 0) + (countBinaan?.[`kelompok${k}`]?.p ?? 0)}</td>
+                                    </tr>
+                                </React.Fragment>
+                            ))}
 
-                            <tr>
-                                <td style={{ border: '1px solid black', width: 100, height: 20 }}>Kelompok 5</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.balita_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.balita_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.paud_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.paud_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.caberawit_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.caberawit_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.praremaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.praremaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.remaja_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.remaja_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.pranikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.pranikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.menikah_l.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.menikah_p.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.duda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.kelompok5.janda.length}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalLakiKelompok5}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahJenjang.totalPerempuanKelompok5}</td>
-                                <td rowSpan={2} className='color-table-4' style={{ border: '1px solid black', width: 50, fontWeight: 'bold' }}>{jumlahJenjang.totalKeseluruhanKelompok5}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }}>{jumlahKartuKeluargaK5}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok5.l}</td>
-                                <td style={{ border: '1px solid black' }}>{jumlahBinaan?.kelompok5.p}</td>
+                            {/* TOTAL HEADER L/P */}
+                            <tr style={{ backgroundColor: colors.table4, fontWeight: 'bold' }}>
+                                <td style={s.td}>Jumlah L/P</td>
+                                <td style={s.td}>{desaTotals.totalBalita_lDesa}</td><td style={s.td}>{desaTotals.totalBalita_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalPaud_lDesa}</td><td style={s.td}>{desaTotals.totalPaud_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalCaberawit_lDesa}</td><td style={s.td}>{desaTotals.totalCaberawit_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalPraremaja_lDesa}</td><td style={s.td}>{desaTotals.totalPraremaja_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalRemaja_lDesa}</td><td style={s.td}>{desaTotals.totalRemaja_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalPraNikah_lDesa}</td><td style={s.td}>{desaTotals.totalPraNikah_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalMenikah_lDesa}</td><td style={s.td}>{desaTotals.totalMenikah_pDesa}</td>
+                                <td style={s.td}>{desaTotals.totalDudaDesa}</td><td style={s.td}>{desaTotals.totalJandaDesa}</td>
+                                <td style={s.td}>{(desaTotals.totalBalita_lDesa + desaTotals.totalCaberawit_lDesa + desaTotals.totalPaud_lDesa + desaTotals.totalPraremaja_lDesa + desaTotals.totalRemaja_lDesa + desaTotals.totalPraNikah_lDesa + desaTotals.totalMenikah_lDesa + desaTotals.totalDudaDesa) /* approx for L */}</td>
+                                <td style={s.td}>{(desaTotals.totalBalita_pDesa + desaTotals.totalCaberawit_pDesa + desaTotals.totalPaud_pDesa + desaTotals.totalPraremaja_pDesa + desaTotals.totalRemaja_pDesa + desaTotals.totalPraNikah_pDesa + desaTotals.totalMenikah_pDesa + desaTotals.totalJandaDesa) /* approx for P */}</td>
+                                <td rowSpan={2} style={s.td}>{(desaTotals.totalBalita_lDesa + desaTotals.totalPaud_lDesa + desaTotals.totalCaberawit_lDesa + desaTotals.totalPraremaja_lDesa + desaTotals.totalRemaja_lDesa + desaTotals.totalPraNikah_lDesa + desaTotals.totalMenikah_lDesa + desaTotals.totalDudaDesa) + (desaTotals.totalBalita_pDesa + desaTotals.totalPaud_pDesa + desaTotals.totalCaberawit_pDesa + desaTotals.totalPraremaja_pDesa + desaTotals.totalRemaja_pDesa + desaTotals.totalPraNikah_pDesa + desaTotals.totalMenikah_pDesa + desaTotals.totalJandaDesa)}</td>
+                                <td rowSpan={2} style={s.td}>{Object.values(countKK).reduce((s, v) => s + (v ?? 0), 0)}</td>
+                                <td rowSpan={2} style={s.td}>{countDuafa ? Object.values(countDuafa).reduce((s, v) => typeof v === 'number' ? s + v : s, 0) : stats.jumlahDuafa.jiwa}</td>
+                                <td style={s.td}>{Object.values(countBinaan).reduce((s, v) => s + (v?.l ?? 0), 0)}</td>
+                                <td style={s.td}>{Object.values(countBinaan).reduce((s, v) => s + (v?.p ?? 0), 0)}</td>
                             </tr>
-                            <tr>
-                                <td style={{ border: '1px solid black', height: 20 }} className='color-table-5'>Jumlah</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalBalitaLKelompok5 + jumlahJenjang.totalBalitaPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPaudLKelompok5 + jumlahJenjang.totalPaudPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalCabeRawitLKelompok5 + jumlahJenjang.totalCabeRawitPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraRemajaLKelompok5 + jumlahJenjang.totalPraRemajaPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalRemajaLKelompok5 + jumlahJenjang.totalRemajaPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraNikahLKelompok5 + jumlahJenjang.totalPraNikahPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalMenikahLKelompok5 + jumlahJenjang.totalMenikahPKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalDudaKelompok5 + jumlahJenjang.totalJandaKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalLakiKelompok5 + jumlahJenjang.totalPerempuanKelompok5}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahBinaanKelompok5}</td>
-                            </tr>
-
-                            <tr style={{ fontWeight: 'bold' }}>
-                                <td className='color-table-4' style={{ border: '1px solid black', height: 20 }}>Jumlah L/P</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalBalita_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalBalita_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalPaud_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalPaud_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalCaberawit_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalCaberawit_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalPraremaja_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalPraremaja_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalRemaja_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalRemaja_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalPraNikah_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalPraNikah_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalMenikah_lDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalMenikah_pDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalDudaDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahJenjang.totalJandaDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{totalLakiDesa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{totalPerempuanDesa}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }} className='color-table-4'>{totalKeselurhanSensus}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }} className='color-table-4'>{totalKeseluruhanKK}</td>
-                                <td rowSpan={2} style={{ border: '1px solid black' }} className='color-table-4'>{totalJiwaDuafa}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahBinaanLaki}</td>
-                                <td style={{ border: '1px solid black' }} className='color-table-4'>{jumlahBinaanPerempuan}</td>
-                            </tr>
-                            <tr style={{ fontWeight: "bold" }}>
-                                <td style={{ textAlign: 'center', border: '1px solid black', height: 20 }} className='color-table-5'>Total</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalBalita_lDesa + jumlahJenjang.totalBalita_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPaud_lDesa + jumlahJenjang.totalPaud_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalCaberawit_lDesa + jumlahJenjang.totalCaberawit_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraremaja_lDesa + jumlahJenjang.totalPraremaja_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalRemaja_lDesa + jumlahJenjang.totalRemaja_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalPraNikah_lDesa + jumlahJenjang.totalPraNikah_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalMenikah_lDesa + jumlahJenjang.totalMenikah_pDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahJenjang.totalDudaDesa + jumlahJenjang.totalJandaDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{totalLakiDesa + totalPerempuanDesa}</td>
-                                <td colSpan={2} style={{ border: '1px solid black', width: 80 }} className='color-table-5'>{jumlahBinaanLaki + jumlahBinaanPerempuan}</td>
+                            <tr style={{ backgroundColor: colors.table4, fontWeight: 'bold' }}>
+                                <td style={s.td}>Total</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalBalita_lDesa + desaTotals.totalBalita_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalPaud_lDesa + desaTotals.totalPaud_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalCaberawit_lDesa + desaTotals.totalCaberawit_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalPraremaja_lDesa + desaTotals.totalPraremaja_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalRemaja_lDesa + desaTotals.totalRemaja_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalPraNikah_lDesa + desaTotals.totalPraNikah_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalMenikah_lDesa + desaTotals.totalMenikah_pDesa}</td>
+                                <td colSpan={2} style={s.td}>{desaTotals.totalDudaDesa + desaTotals.totalJandaDesa}</td>
+                                <td colSpan={2} style={s.td}>{(desaTotals.totalBalita_lDesa + desaTotals.totalPaud_lDesa + desaTotals.totalCaberawit_lDesa + desaTotals.totalPraremaja_lDesa + desaTotals.totalRemaja_lDesa + desaTotals.totalPraNikah_lDesa + desaTotals.totalMenikah_lDesa + desaTotals.totalDudaDesa) + (desaTotals.totalBalita_pDesa + desaTotals.totalPaud_pDesa + desaTotals.totalCaberawit_pDesa + desaTotals.totalPraremaja_pDesa + desaTotals.totalRemaja_pDesa + desaTotals.totalPraNikah_pDesa + desaTotals.totalMenikah_pDesa + desaTotals.totalJandaDesa)}</td>
+                                <td colSpan={2} style={s.td}>{Object.values(countBinaan).reduce((s, v) => s + (v?.l ?? 0) + (v?.p ?? 0), 0)}</td>
                             </tr>
                         </tbody>
                     </table>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 50, paddingLeft: 50, paddingRight: 100 }}>
-                        <div style={{ border: '1px solid black', padding: 5 }}>
-                            <p style={{ padding: 0, margin: 0, fontWeight: 'bold', textDecoration: 'underline', marginBottom: 10 }}>Keterangan</p>
-                            <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
-                                <div>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Balita</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Paud</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Caberawit</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Pra Remaja</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Remaja</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Dewasa</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>L</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>P</p>
-                                </div>
-                                <div style={{ marginLeft: 20 }}>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>:</p>
-                                </div>
-                                <div style={{ marginLeft: 20 }}>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>0 - 3 Tahun</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>4 - 5 Tahun</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>6/7 - 12/13 Tahun (SD)</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>12/13 - 15/16 Tahun (SMP)</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>15/16 - 18/19 Tahun (SMA)</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>18/19 Tahun keatas (Belum Nikah)</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Laki - laki</p>
-                                    <p style={{ padding: 0, margin: 0, marginTop: 5, fontSize: 12 }}>Perempuan</p>
-                                </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '150px', fontFamily: 'Arial, sans-serif' }}>
+                        <div style={{ border: '2px solid black', padding: '15px', fontSize: '16px', display: 'flex', gap: '40px', backgroundColor: 'white' }}>
+                            <div>
+                                <p style={{ margin: 0, fontWeight: 'bold', textDecoration: 'underline', marginBottom: '8px' }}>Keterangan</p>
+                                <table style={{ border: 'none', fontSize: '16px' }}>
+                                    <tbody>
+                                        <tr><td style={{padding: '3px'}}>Balita</td><td style={{padding: '3px'}}>: 0 - 3 Tahun</td></tr>
+                                        <tr><td style={{padding: '3px'}}>Paud</td><td style={{padding: '3px'}}>: 4 - 5 Tahun</td></tr>
+                                        <tr><td style={{padding: '3px'}}>Caberawit</td><td style={{padding: '3px'}}>: 6 - 12 Tahun (SD)</td></tr>
+                                        <tr><td style={{padding: '3px'}}>Pra Remaja</td><td style={{padding: '3px'}}>: 13 - 15 Tahun (SMP)</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
-
+                            <div style={{ paddingTop: '28px' }}>
+                                <table style={{ border: 'none', fontSize: '16px' }}>
+                                    <tbody>
+                                        <tr><td style={{padding: '3px'}}>Remaja</td><td style={{padding: '3px'}}>: 16 - 18 Tahun (SMA)</td></tr>
+                                        <tr><td style={{padding: '3px'}}>Dewasa</td><td style={{padding: '3px'}}>: 19 Tahun+ (Belum Nikah)</td></tr>
+                                        <tr><td style={{padding: '3px'}}>L</td><td style={{padding: '3px'}}>:
+                                            Laki - laki</td></tr>
+                                        <tr><td style={{padding: '3px'}}>P</td><td style={{padding: '3px'}}>:
+                                            Perempuan</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div >
-                            <p>Depok, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-
-                            <p style={{ padding: 0, margin: 0, marginTop: 100, textDecoration: 'underline' }}>H. Sulaiman</p>
-                            <p style={{ padding: 0, margin: 0, marginTop: 10, fontWeight: 'bold' }}>KI Desa</p>
+                        <div style={{ textAlign: 'center', marginRight: '80px', fontSize: '16px' }}>
+                            <p style={{ margin: '0 0 100px 0' }}>Depok, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                            <p style={{ margin: 0, textDecoration: 'underline', fontWeight: 'bold', fontSize: '18px' }}>H. Sulaiman</p>
+                            <p style={{ margin: 0, fontSize: '16px' }}>KI Desa</p>
                         </div>
                     </div>
                 </div>
             </div>
-        );
-    }
-    return null
-
+        </div>
+    );
 });
 
 export default TabelSensus;
