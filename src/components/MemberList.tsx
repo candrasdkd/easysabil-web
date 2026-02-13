@@ -1,57 +1,35 @@
-import * as React from 'react';
-import {
-    Box,
-    Button,
-    Dialog,
-    IconButton,
-    Stack,
-    TextField,
-    Tooltip,
-    Typography,
-    Alert,
-    MenuItem,
-    TablePagination,
-    Checkbox,
-    ListItemText,
-    Fab,
-    useTheme,
-    useMediaQuery,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    CircularProgress,
-} from '@mui/material';
-import {
-    DataGrid,
-    GridActionsCellItem,
-    gridClasses,
-    type GridColDef,
-    type GridPaginationModel,
-    type GridEventListener,
-    GridToolbar,
-    type GridSortModel,
-} from '@mui/x-data-grid';
-import DownloadIcon from '@mui/icons-material/Download';
-import AddIcon from '@mui/icons-material/Add';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import LockIcon from '@mui/icons-material/Lock';
-import FilterListIcon from '@mui/icons-material/FilterList';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
-import { useNavigate } from 'react-router';
-import PageContainer from './PageContainer';
-import { useDialogs } from '../hooks/useDialogs/useDialogs';
-import useNotifications from '../hooks/useNotifications/useNotifications';
-import { type Member } from '../types/Member';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { supabase } from '../supabase/client';
+// 1. Import Toast
+import toast, { Toaster } from 'react-hot-toast';
+import { 
+    Search, 
+    Plus, 
+    RefreshCw, 
+    Filter, 
+    Download, 
+    Edit, 
+    Trash2, 
+    Lock, 
+    ChevronLeft, 
+    ChevronRight,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
+    X,
+    Loader2
+} from 'lucide-react';
+
+import { type Member } from '../types/Member';
 
 dayjs.locale('id');
 
-const INITIAL_PAGE_SIZE = 30;
+const INITIAL_PAGE_SIZE = 15;
 
 type Props = {
     loading?: boolean;
@@ -59,699 +37,543 @@ type Props = {
     refreshMembers: () => void;
 };
 
+// --- Helper Components ---
+
+const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' | 'red' | 'gray' | 'blue' }) => {
+    const colors = {
+        green: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        red: 'bg-rose-100 text-rose-700 border-rose-200',
+        gray: 'bg-slate-100 text-slate-600 border-slate-200',
+        blue: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    };
+    return (
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${colors[color]}`}>
+            {children}
+        </span>
+    );
+};
+
 export default function MemberList({ loading, members, refreshMembers }: Props) {
     const navigate = useNavigate();
-    const dialogs = useDialogs();
-    const notifications = useNotifications();
 
-    const [searchText, setSearchText] = React.useState('');
-    const [selectedGender, setSelectedGender] = React.useState<string[]>([]);
-    const [selectedLevel, setSelectedLevel] = React.useState<string[]>([]);
-    const [selectedMarriageStatus, setSelectedMarriageStatus] = React.useState<string[]>([]);
-    const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
-    const [memberStatus, setMemberStatus] = React.useState<'Aktif' | 'Tidak Aktif' | 'Semua'>('Aktif');
-    const [allMembers, setAllMembers] = React.useState<Member[]>(members);
-    const [openPasswordDialog, setOpenPasswordDialog] = React.useState(false);
-    const [password, setPassword] = React.useState('');
-    const [loadingPassword, setLoadingPassword] = React.useState(false);
-    const [requiredPassword, setRequiredPassword] = React.useState<string | null>(null);
-    const [pendingAction, setPendingAction] = React.useState<(() => void) | null>(null);
-    const [error, setError] = React.useState<Error | null>(null);
+    // --- State ---
+    const [searchText, setSearchText] = useState('');
+    
+    // Filters
+    const [selectedGender, setSelectedGender] = useState<string[]>([]);
+    const [selectedLevel, setSelectedLevel] = useState<string[]>([]);
+    const [selectedMarriageStatus, setSelectedMarriageStatus] = useState<string[]>([]);
+    const [memberStatus, setMemberStatus] = useState<'Aktif' | 'Tidak Aktif' | 'Semua'>('Aktif');
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-    const [paginationModel, setPaginationModel] = React.useState<GridPaginationModel>({
-        page: 0,
-        pageSize: INITIAL_PAGE_SIZE,
-    });
-    const [sortModel, setSortModel] = React.useState<GridSortModel>([
-        { field: 'order', sort: 'asc' },
-    ]);
-    const [rowsState, setRowsState] = React.useState<{ rows: Member[]; rowCount: number }>({
-        rows: [],
-        rowCount: 0,
-    });
+    // Password & Actions
+    const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
+    const [passwordInput, setPasswordInput] = useState('');
+    const [loadingPassword, setLoadingPassword] = useState(false);
+    const [requiredPassword, setRequiredPassword] = useState<string | null>(null);
+    const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    // Pagination & Sorting
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(INITIAL_PAGE_SIZE);
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Member | 'actions'; direction: 'asc' | 'desc' }>({ key: 'order', direction: 'asc' });
 
-    React.useEffect(() => {
-        setAllMembers(members);
-    }, [members]);
+    // --- Logic ---
 
-    const highlightMatch = (text: string | number, search: string) => {
+    // 1. Highlight Text Logic
+    const highlightMatch = (text: string | number | null, search: string) => {
         const source = String(text ?? '');
         if (!search) return source;
-
         const regex = new RegExp(`(${search})`, 'gi');
         const parts = source.split(regex);
-
         return (
             <>
                 {parts.map((part, i) =>
-                    part.toLowerCase() === search.toLowerCase() ? <mark key={i}>{part}</mark> : <span key={i}>{part}</span>,
+                    part.toLowerCase() === search.toLowerCase() ? (
+                        <span key={i} className="bg-yellow-200 text-slate-900 rounded-sm px-0.5">{part}</span>
+                    ) : (
+                        <span key={i}>{part}</span>
+                    )
                 )}
             </>
         );
     };
 
-    /**
-     * Memoized hook to get filtered and sorted members.
-     * This is the single source of truth for both DataGrid and Excel export.
-     */
-    const filteredAndSortedMembers = React.useMemo(() => {
-        let filtered = allMembers;
+    // 2. Filter & Sort Logic (Memoized)
+    const processedMembers = useMemo(() => {
+        let filtered = members.filter(m => !m.is_educate); // Default filter (bisa disesuaikan)
 
-        // 1. FILTER: is_educate (Filter tambahan)
-        filtered = filtered.filter((m) => m.is_educate === false);
+        // Status Filter
+        if (memberStatus === 'Aktif') filtered = filtered.filter(m => m.is_active);
+        if (memberStatus === 'Tidak Aktif') filtered = filtered.filter(m => !m.is_active);
 
-        // 2. FILTER: Status
-        if (memberStatus === 'Aktif') {
-            filtered = filtered.filter((m) => m.is_active === true);
-        } else if (memberStatus === 'Tidak Aktif') {
-            filtered = filtered.filter((m) => m.is_active === false);
-        }
+        // Multi Select Filters
+        if (selectedGender.length) filtered = filtered.filter(m => selectedGender.includes(m.gender));
+        if (selectedLevel.length) filtered = filtered.filter(m => selectedLevel.includes(m.level));
+        if (selectedMarriageStatus.length) filtered = filtered.filter(m => selectedMarriageStatus.includes(m.marriage_status));
 
-        // 3. FILTER: Gender
-        if (selectedGender.length) {
-            filtered = filtered.filter((m) => selectedGender.includes(m.gender));
-        }
-        // 4. FILTER: Level
-        if (selectedLevel.length) {
-            filtered = filtered.filter((m) => selectedLevel.includes(m.level));
-        }
-        // 5. FILTER: Marriage Status
-        if (selectedMarriageStatus.length) {
-            filtered = filtered.filter((m) => selectedMarriageStatus.includes(m.marriage_status));
-        }
-
-        // 6. FILTER: Search Text
+        // Search Text (Updated to include Alias)
         if (searchText.trim()) {
             const q = searchText.toLowerCase();
-            filtered = filtered.filter((m) =>
+            filtered = filtered.filter(m => 
                 Object.entries(m).some(([key, value]) => {
-                    if (value == null) return false;
-                    if (key === 'family_name') return false; // Sesuai logic lama di loadData
-
+                    if (value == null || key === 'family_name' || key === 'uuid' || key === 'id_family') return false;
                     let str = String(value);
-                    if (key === 'date_of_birth') {
-                        str = dayjs(value as string).format('DD MMMM YYYY');
-                    }
+                    if (key === 'date_of_birth') str = dayjs(value as string).format('DD MMMM YYYY');
                     return str.toLowerCase().includes(q);
-                }),
+                })
             );
         }
 
-        // 7. SORT
-        if (sortModel.length > 0) {
-            const { field, sort } = sortModel[0];
+        // Sorting
+        filtered.sort((a, b) => {
+            let aVal: any = a[sortConfig.key as keyof Member];
+            let bVal: any = b[sortConfig.key as keyof Member];
 
-            filtered = filtered.sort((a, b) => {
-                const aValue = a[field as keyof Member];
-                const bValue = b[field as keyof Member];
+            if (sortConfig.key === 'name') {
+                aVal = a.alias || a.name;
+                bVal = b.alias || b.name;
+            }
 
-                // Taruh nilai null/undefined di akhir
-                if (aValue == null) return 1;
-                if (bValue == null) return -1;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
 
-                let compare = 0;
+            let comparison = 0;
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                comparison = aVal - bVal;
+            } else {
+                comparison = String(aVal).localeCompare(String(bVal));
+            }
 
-                // Helper untuk mengonversi nilai date-like menjadi timestamp
-                const toTimestamp = (v: unknown): number => {
-                    if (v instanceof Date) return v.getTime();
-                    if (typeof v === 'string') {
-                        const t = Date.parse(v);
-                        return isNaN(t) ? NaN : t;
-                    }
-                    return NaN;
-                };
-
-                if (typeof aValue === 'number' && typeof bValue === 'number') {
-                    compare = aValue - bValue;
-                } else {
-                    const aTime = toTimestamp(aValue);
-                    const bTime = toTimestamp(bValue);
-                    if (!isNaN(aTime) && !isNaN(bTime)) {
-                        compare = aTime - bTime;
-                    } else {
-                        // Default ke perbandingan string
-                        compare = String(aValue ?? '').localeCompare(String(bValue ?? ''));
-                    }
-                }
-
-                return sort === 'desc' ? -compare : compare;
-            });
-        }
+            return sortConfig.direction === 'asc' ? comparison : -comparison;
+        });
 
         return filtered;
-    }, [
-        allMembers,
-        searchText,
-        memberStatus,
-        selectedGender,
-        selectedLevel,
-        selectedMarriageStatus,
-        sortModel,
-    ]);
+    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig]);
 
-    /**
-     * loadData now simply paginates the pre-filtered/sorted list
-     */
-    const loadData = React.useCallback(() => {
-        setError(null);
-        try {
-            const start = paginationModel.page * paginationModel.pageSize;
-            const end = start + paginationModel.pageSize;
+    // 3. Pagination Logic
+    const paginatedMembers = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return processedMembers.slice(start, start + pageSize);
+    }, [processedMembers, currentPage, pageSize]);
 
-            // Gunakan data yang sudah difilter dan disortir
-            const pageRows = filteredAndSortedMembers.slice(start, end).map((m) => ({ ...m, id: m.uuid }));
+    const totalPages = Math.ceil(processedMembers.length / pageSize);
 
-            setRowsState({
-                rows: pageRows,
-                rowCount: filteredAndSortedMembers.length,
-            });
-        } catch (e) {
-            setError(e as Error);
-        }
-    }, [
-        filteredAndSortedMembers, // Hanya bergantung pada list & paginasi
-        paginationModel.page,
-        paginationModel.pageSize,
-    ]);
+    // Reset pagination when filter changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus]);
 
-    React.useEffect(() => {
-        loadData();
-    }, [loadData]);
 
-    const handleRowClick = React.useCallback<GridEventListener<'rowClick'>>(
-        ({ row }) => {
-            navigate(`/members/${row.uuid}`);
-        },
-        [navigate],
-    );
+    // --- Handlers ---
 
-    const handleCreateClick = React.useCallback(() => {
-        navigate('/members/new');
-    }, [navigate]);
+    const handleSort = (key: keyof Member) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
 
-    const handleRowEdit = React.useCallback(
-        (member: Member) => () => {
-            navigate(`/members/${member.uuid}/edit`);
-        },
-        [navigate],
-    );
-
-    const verifyPasswordAndRun = (expectedPassword: string, action: () => void) => {
-        setRequiredPassword(expectedPassword);
+    const verifyPasswordAndRun = (expected: string, action: () => void) => {
+        setRequiredPassword(expected);
         setPendingAction(() => action);
-        setPassword('');
+        setPasswordInput('');
         setOpenPasswordDialog(true);
     };
 
-    const handleRowDelete = React.useCallback(
-        (member: Member) => () => {
-            verifyPasswordAndRun('superadmin354', async () => {
-                const confirmed = await dialogs.confirm(`Kamu yakin ingin menghapus data ini?`, {
-                    title: `Hapus ${member.name}?`,
-                    severity: 'error',
-                    okText: 'Delete',
-                    cancelText: 'Cancel',
-                });
-
-                if (!confirmed) return;
-
-                try {
-                    const { error, status } = await supabase
-                        .from('list_sensus')
-                        .delete()
-                        .eq('uuid', member.uuid);
-                    if (error) {
-                        notifications.show(`Gagal menghapus data. Reason: ${(error as Error).message}`, {
-                            severity: 'error',
-                            autoHideDuration: 3000,
-                        });
-                        return;
-                    }
-
-                    if (status === 204) {
-                        notifications.show('Berhasil menghapus data', { severity: 'success', autoHideDuration: 3000 });
-                        loadData(); // loadData akan otomatis mengambil dari useMemo yang baru
-                        refreshMembers(); // refresh allMembers
-                    }
-                } catch (deleteError) {
-                    notifications.show(`Gagal menghapus data. Reason: ${(deleteError as Error).message}`, {
-                        severity: 'error',
-                        autoHideDuration: 3000,
-                    });
-                }
-            });
-        },
-        [dialogs, notifications, loadData, refreshMembers], // loadData sdh di-memoized
-    );
-
-    const handlePasswordSubmit = () => {
-        if (!password.trim()) {
-            notifications.show('Password tidak boleh kosong', { severity: 'warning' });
+    const handlePasswordSubmit = (e?: React.FormEvent) => {
+        if(e) e.preventDefault();
+        if (!passwordInput.trim()) {
+            toast('Password kosong', { icon: '⚠️' });
             return;
         }
         setLoadingPassword(true);
         setTimeout(() => {
-            if (password === requiredPassword) {
+            if (passwordInput === requiredPassword) {
                 setOpenPasswordDialog(false);
+                toast.success('Verifikasi berhasil');
                 pendingAction?.();
             } else {
-                notifications.show('Password salah', { severity: 'error', autoHideDuration: 3000 });
+                toast.error('Password salah');
             }
             setLoadingPassword(false);
         }, 800);
     };
 
-    const handleResetFilters = () => {
-        setSelectedGender([]);
-        setSelectedLevel([]);
-        setSelectedMarriageStatus([]);
-        setMemberStatus('Aktif');
-        setPaginationModel((prev) => ({ ...prev, page: 0 }));
-        setSearchText('');
+    const handleDelete = (member: Member) => {
+        // Menggunakan Password sebagai konfirmasi (Super Admin)
+        verifyPasswordAndRun('superadmin354', async () => {
+            const toastId = toast.loading('Menghapus data...');
+            
+            try {
+                const { error } = await supabase.from('list_sensus').delete().eq('uuid', member.uuid);
+                if (error) throw error;
+
+                toast.success('Data berhasil dihapus', { id: toastId });
+                refreshMembers();
+            } catch (err: any) {
+                toast.error(`Gagal: ${err.message}`, { id: toastId });
+            }
+        });
     };
 
-    const columns = React.useMemo<GridColDef<Member>[]>(
-        () => [
-            {
-                field: 'name',
-                headerName: 'NAMA',
-                width: 220,
-                headerAlign: 'center',
-                renderCell: (p) => highlightMatch(p.row.name, searchText),
-            },
-            {
-                field: 'level',
-                headerName: 'JENJANG',
-                width: 140,
-                align: 'center',
-                headerAlign: 'center',
-                renderCell: (p) => highlightMatch(p.row.level, searchText),
-            },
-            {
-                field: 'gender',
-                headerName: 'JENIS KELAMIN',
-                width: 150,
-                align: 'center',
-                headerAlign: 'center',
-                renderCell: (p) => highlightMatch(p.row.gender, searchText),
-            },
-            {
-                field: 'age',
-                headerName: 'UMUR',
-                width: 110,
-                align: 'center',
-                headerAlign: 'center',
-                renderCell: (p) => highlightMatch(p.row.age ?? '', searchText),
-            },
-            {
-                field: 'date_of_birth',
-                headerName: 'TANGGAL LAHIR',
-                type: 'date',
-                valueGetter: (value) => value && new Date(value),
-                valueFormatter: (value) => {
-                    if (!value) return '';
-                    return dayjs(value).format('DD MMMM YYYY');
-                },
-                width: 140,
-                align: 'center',
-                headerAlign: 'center',
-                renderCell: (params) =>
-                    highlightMatch(dayjs(params.row.date_of_birth).format('DD MMMM YYYY'), searchText),
-            },
-            {
-                field: 'marriage_status',
-                headerName: 'STATUS PERNIKAHAN',
-                type: 'singleSelect',
-                width: 200,
-                align: 'center',
-                headerAlign: 'center',
-                valueOptions: ['Belum Menikah', 'Menikah', 'Janda', 'Duda'],
-                renderCell: (p) => highlightMatch(p.row.marriage_status, searchText),
-            },
-            {
-                field: 'family_name',
-                headerName: 'KELUARGA',
-                width: 100,
-                align: 'center',
-                headerAlign: 'center',
-                renderCell: (p) => highlightMatch(p.row.family_name, searchText),
-            },
-            {
-                field: 'order',
-                headerName: 'URUTAN',
-                type: 'number',
-                width: 100,
-                align: 'center',
-                headerAlign: 'center',
-                renderCell: (p) => highlightMatch(p.row.order, searchText),
-            },
-            {
-                field: 'actions',
-                headerName: 'ACTIONS',
-                type: 'actions',
-                width: 100,
-                align: 'center',
-                headerAlign: 'center',
-                getActions: ({ row }) => [
-                    <GridActionsCellItem key="edit" icon={<EditIcon />} label="Edit" onClick={handleRowEdit(row)} />,
-                    <GridActionsCellItem
-                        key="delete"
-                        icon={<DeleteIcon />}
-                        label="Delete"
-                        onClick={handleRowDelete(row)}
-                    />,
-                ],
-            },
-        ],
-        [handleRowEdit, handleRowDelete, searchText],
-    );
-
-    /**
-     * handleExportExcel now uses the memoized, sorted, and filtered data
-     */
     const handleExportExcel = () => {
-        const filterInfo = [
-            ['Filter yang Aktif:'],
-            [`Status Keaktifan: ${memberStatus}`],
-            [`Jenis Kelamin: ${selectedGender.length ? selectedGender.join(', ') : 'Semua'}`],
-            [`Jenjang Pendidikan: ${selectedLevel.length ? selectedLevel.join(', ') : 'Semua'}`],
-            [`Status Pernikahan: ${selectedMarriageStatus.length ? selectedMarriageStatus.join(', ') : 'Semua'}`],
-            [`Pencarian: ${searchText.trim() || 'Tidak ada'}`],
-            [],
-        ];
-
-        // Gunakan data yang SUDAH difilter dan disortir
-        const data = filteredAndSortedMembers.map((row) => ({
-            'Nama Lengkap': row.name,
-            'Status Aktif': row.is_active ? 'Aktif' : 'Tidak Aktif',
-            Jenjang: row.level,
-            'Jenis Kelamin': row.gender,
-            Umur: row.age,
-            'Tanggal Lahir': row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMMM YYYY') : '',
-            'Status Pernikahan': row.marriage_status,
-            Keluarga: row.family_name,
-            Urutan: row.order,
+        const data = processedMembers.map(row => ({
+            'Nama/Alias': row.alias || row.name, 
+            'Nama Asli': row.name,
+            'Status': row.is_active ? 'Aktif' : 'Non-Aktif',
+            'Jenjang': row.level,
+            'Gender': row.gender,
+            'Umur': row.age,
+            'Tgl Lahir': row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-',
+            'Status Nikah': row.marriage_status,
+            'Keluarga': row.family_name,
+            'Urutan': row.order
         }));
 
-        const header = data.length > 0 ? Object.keys(data[0]) : [];
-        const dataWithHeader = [header, ...data.map((r) => Object.values(r))];
-        const fullData = [...filterInfo, ...dataWithHeader];
-        const ws = XLSX.utils.aoa_to_sheet(fullData);
-
-        // Sesuaikan lebar kolom (menambahkan 2 kolom baru)
-        ws['!cols'] = [
-            { wch: 30 }, // Nama
-            { wch: 15 }, // Status
-            { wch: 15 }, // Jenjang
-            { wch: 15 }, // Gender
-            { wch: 10 }, // Umur
-            { wch: 20 }, // Tgl Lahir
-            { wch: 20 }, // Status Nikah
-            { wch: 15 }, // Keluarga
-            { wch: 10 }, // Urutan
-        ];
-
+        const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Data Member');
-
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([excelBuffer], {
-            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        });
-        saveAs(blob, 'Data_Jamaah.xlsx');
+        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'Data_Jamaah.xlsx');
+        toast.success('File Excel berhasil diunduh');
+    };
+
+    // --- Render Helpers ---
+
+    const SortIcon = ({ columnKey }: { columnKey: keyof Member }) => {
+        if (sortConfig.key !== columnKey) return <ArrowUpDown size={14} className="text-slate-400 opacity-50" />;
+        return sortConfig.direction === 'asc' 
+            ? <ArrowUp size={14} className="text-indigo-600" /> 
+            : <ArrowDown size={14} className="text-indigo-600" />;
     };
 
     return (
-        <PageContainer
-            title="Members"
-            actions={
-                <Stack direction="row" alignItems="center" spacing={1}>
-                    <Tooltip title="Reload data" placement="right" enterDelay={1000}>
-                        <div>
-                            <IconButton size="small" aria-label="refresh" onClick={refreshMembers}>
-                                <RefreshIcon />
-                            </IconButton>
-                        </div>
-                    </Tooltip>
-                    <Button variant="contained" onClick={handleCreateClick} startIcon={<AddIcon />}>
-                        Tambah
-                    </Button>
-                </Stack>
-            }
-        >
-            <Box sx={{ flex: 1, width: '100%', position: 'relative' }}>
-                <Stack direction="row" spacing={2} mb={2} flexWrap="wrap">
-                    <TextField
-                        label="Cari Apapun"
+        <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
+            {/* 4. Toaster */}
+            <Toaster position="top-center" />
+
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">Database Anggota</h1>
+                    <p className="text-sm text-slate-500 mt-1">Kelola data sensus jamaah secara terpusat.</p>
+                </div>
+                <div className="flex gap-3 w-full sm:w-auto">
+                    <button 
+                        onClick={() => { refreshMembers(); toast.success('Data diperbarui'); }} 
+                        className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition-all shadow-sm"
+                        title="Refresh Data"
+                    >
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                    <button 
+                        onClick={() => navigate('/members/new')} 
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all"
+                    >
+                        <Plus size={18} /> Tambah Anggota
+                    </button>
+                </div>
+            </div>
+
+            {/* Toolbar: Search, Filter, Export */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div className="relative w-full md:w-96">
+                    <input 
+                        type="text" 
+                        placeholder="Cari nama, keluarga, dll..." 
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
-                        size="small"
-                        fullWidth
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
                     />
-                </Stack>
-
-                {error ? (
-                    <Alert severity="error">{error.message}</Alert>
-                ) : (
-                    <DataGrid
-                        rows={rowsState.rows}
-                        rowCount={rowsState.rowCount}
-                        columns={columns}
-                        paginationMode="server"
-                        paginationModel={paginationModel}
-                        onPaginationModelChange={setPaginationModel}
-                        disableRowSelectionOnClick
-                        onRowClick={handleRowClick}
-                        loading={loading}
-                        sortingMode="server"
-                        sortModel={sortModel}
-                        onSortModelChange={setSortModel}
-                        slots={{
-                            toolbar: GridToolbar,
-                            pagination: () => (
-                                <TablePagination
-                                    component="div"
-                                    count={rowsState.rowCount}
-                                    page={paginationModel.page}
-                                    onPageChange={(_, newPage) =>
-                                        setPaginationModel((prev) => ({ ...prev, page: newPage }))
-                                    }
-                                    rowsPerPage={paginationModel.pageSize}
-                                    onRowsPerPageChange={(e) =>
-                                        setPaginationModel({
-                                            page: 0,
-                                            pageSize: parseInt(e.target.value, 10),
-                                        })
-                                    }
-                                    rowsPerPageOptions={[15, 30, 50, 100]}
-                                    labelRowsPerPage="Show Data"
-                                />
-                            ),
-                        }}
-                        sx={{
-                            [`& .${gridClasses.columnHeader}, & .${gridClasses.cell}`]: { outline: 'transparent' },
-                            [`& .${gridClasses.columnHeader}:focus-within, & .${gridClasses.cell}:focus-within`]: {
-                                outline: 'none',
-                            },
-                            [`& .${gridClasses.row}:hover`]: { cursor: 'pointer' },
-                        }}
-                    />
-                )}
-            </Box>
-
-            {/* Password Dialog */}
-            <Dialog open={openPasswordDialog} onClose={() => setOpenPasswordDialog(false)} fullWidth maxWidth="xs">
-                <DialogTitle>
-                    <Box display="flex" alignItems="center" gap={1}>
-                        <LockIcon color="primary" />
-                        Masukkan Password
-                    </Box>
-                </DialogTitle>
-                <DialogContent>
-                    <Typography variant="body2" mb={2}>
-                        Untuk melanjutkan proses, silakan masukkan password keamanan.
-                    </Typography>
-                    <TextField
-                        fullWidth
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Password"
-                        autoFocus
-                        onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-                    />
-                </DialogContent>
-                <DialogActions sx={{ display: 'flex', gap: 1, px: 3, pb: 2 }}>
-                    <Button onClick={() => setOpenPasswordDialog(false)} variant="outlined" color="inherit" fullWidth>
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handlePasswordSubmit}
-                        variant="contained"
-                        color="primary"
-                        disabled={loadingPassword}
-                        fullWidth
-                        startIcon={loadingPassword ? <CircularProgress size={18} /> : null}
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                </div>
+                
+                <div className="flex gap-3 w-full md:w-auto">
+                    <button 
+                        onClick={() => setIsFilterOpen(true)}
+                        className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
+                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif') 
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
-                        {loadingPassword ? 'Memeriksa...' : 'Konfirmasi'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Filter Dialog */}
-            <Dialog open={filterDialogOpen} onClose={() => setFilterDialogOpen(false)} maxWidth="sm" fullWidth>
-                <Box p={3}>
-                    <Typography variant="h6" mb={2}>
-                        Filter Data Member
-                    </Typography>
-                    <Stack spacing={2}>
-                        <TextField
-                            select
-                            label="Status Keaktifan"
-                            value={memberStatus}
-                            onChange={(e) => setMemberStatus(e.target.value as 'Aktif' | 'Tidak Aktif' | 'Semua')}
-                            size="small"
-                            fullWidth
-                        >
-                            <MenuItem value="Semua">Semua</MenuItem>
-                            <MenuItem value="Aktif">Aktif</MenuItem>
-                            <MenuItem value="Tidak Aktif">Tidak Aktif</MenuItem>
-                        </TextField>
-
-                        <TextField
-                            label="Jenis Kelamin"
-                            size="small"
-                            select
-                            SelectProps={{
-                                multiple: true,
-                                renderValue: (selected) => (selected as string[]).join(', '),
-                            }}
-                            value={selectedGender}
-                            onChange={(e) => {
-                                const v =
-                                    typeof e.target.value === 'string'
-                                        ? e.target.value.split(',')
-                                        : (e.target.value as string[]);
-                                setSelectedGender(v);
-                            }}
-                        >
-                            {['Laki - Laki', 'Perempuan'].map((gender) => (
-                                <MenuItem key={gender} value={gender}>
-                                    <Checkbox checked={selectedGender.includes(gender)} />
-                                    <ListItemText primary={gender} />
-                                </MenuItem>
-                            ))}
-                        </TextField>
-
-                        <TextField
-                            label="Jenjang"
-                            size="small"
-                            select
-                            SelectProps={{
-                                multiple: true,
-                                renderValue: (selected) => (selected as string[]).join(', '),
-                            }}
-                            value={selectedLevel}
-                            onChange={(e) => {
-                                const v =
-                                    typeof e.target.value === 'string'
-                                        ? e.target.value.split(',')
-                                        : (e.target.value as string[]);
-                                setSelectedLevel(v);
-                            }}
-                        >
-                            {Array.from(new Set(allMembers.map((m) => m.level)))
-                                .sort()
-                                .map((level) => (
-                                    <MenuItem key={level} value={level}>
-                                        <Checkbox checked={selectedLevel.includes(level)} />
-                                        <ListItemText primary={level} />
-                                    </MenuItem>
-                                ))}
-                        </TextField>
-
-                        <TextField
-                            label="Status Pernikahan"
-                            size="small"
-                            select
-                            SelectProps={{
-                                multiple: true,
-                                renderValue: (selected) => (selected as string[]).join(', '),
-                            }}
-                            value={selectedMarriageStatus}
-                            onChange={(e) => {
-                                const v =
-                                    typeof e.target.value === 'string'
-                                        ? e.target.value.split(',')
-                                        : (e.target.value as string[]);
-                                setSelectedMarriageStatus(v);
-                            }}
-                        >
-                            {['Belum Menikah', 'Menikah', 'Janda', 'Duda'].map((status) => (
-                                <MenuItem key={status} value={status}>
-                                    <Checkbox checked={selectedMarriageStatus.includes(status)} />
-                                    <ListItemText primary={status} />
-                                </MenuItem>
-                            ))}
-                        </TextField>
-                    </Stack>
-
-                    <Stack direction="row" justifyContent="flex-end" spacing={2} mt={3}>
-                        <Button onClick={handleResetFilters} color="error">
-                            Reset Filter
-                        </Button>
-                        <Button onClick={() => setFilterDialogOpen(false)}>Tutup</Button>
-                        <Button
-                            variant="contained"
-                            onClick={() => {
-                                setPaginationModel((prev) => ({ ...prev, page: 0 }));
-                                // loadData(); // loadData akan dipanggil oleh useEffect
-                                setFilterDialogOpen(false);
-                            }}
-                        >
-                            Terapkan
-                        </Button>
-                    </Stack>
-                </Box>
-            </Dialog>
-
-            {/* Floating Actions */}
-            <Box
-                sx={{
-                    position: 'fixed',
-                    bottom: 16,
-                    left: 16,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1,
-                    zIndex: 1300,
-                }}
-            >
-                <Tooltip title="Filter Data" arrow>
-                    <Fab
-                        color="secondary"
-                        onClick={() => setFilterDialogOpen(true)}
-                        size={isMobile ? 'small' : 'medium'}
-                        sx={{ width: isMobile ? 40 : 56, height: isMobile ? 40 : 56 }}
-                    >
-                        <FilterListIcon fontSize={isMobile ? 'small' : 'medium'} />
-                    </Fab>
-                </Tooltip>
-
-                <Tooltip title="Export Excel" arrow>
-                    <Fab
-                        color="primary"
+                        <Filter size={18} /> Filter
+                    </button>
+                    <button 
                         onClick={handleExportExcel}
-                        size={isMobile ? 'small' : 'medium'}
-                        sx={{ width: isMobile ? 40 : 56, height: isMobile ? 40 : 56 }}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-all flex-1 md:flex-none"
                     >
-                        <DownloadIcon fontSize={isMobile ? 'small' : 'medium'} />
-                    </Fab>
-                </Tooltip>
-            </Box>
-        </PageContainer>
+                        <Download size={18} /> Export
+                    </button>
+                </div>
+            </div>
+
+            {/* Main Table Card */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+                
+                {/* Table Wrapper for Horizontal Scroll */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                                {[
+                                    { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
+                                    { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
+                                    { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
+                                    { label: 'Umur', key: 'age', width: 'w-24' },
+                                    { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' },
+                                    { label: 'Status Nikah', key: 'marriage_status', width: 'min-w-[140px]' },
+                                    { label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' },
+                                    { label: 'No', key: 'order', width: 'w-16' },
+                                ].map((col) => (
+                                    <th 
+                                        key={col.key} 
+                                        className={`px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors ${col.width}`}
+                                        onClick={() => handleSort(col.key as keyof Member)}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            {col.label}
+                                            <SortIcon columnKey={col.key as keyof Member} />
+                                        </div>
+                                    </th>
+                                ))}
+                                <th className="px-6 py-4 text-center w-24 sticky right-0 bg-slate-50 z-20 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm text-slate-700 divide-y divide-slate-100">
+                            {paginatedMembers.length > 0 ? paginatedMembers.map((row) => (
+                                <tr 
+                                    key={row.uuid} 
+                                    className="hover:bg-indigo-50 transition-colors cursor-pointer group"
+                                    onClick={() => navigate(`/members/${row.uuid}`)}
+                                >
+                                    <td className="px-6 py-4 font-medium text-slate-900">
+                                        {highlightMatch(row.alias || row.name, searchText)}
+                                        {row.alias && row.alias !== row.name && (
+                                            <div className="text-xs text-slate-400 font-normal mt-0.5">{row.name}</div>
+                                        )}
+                                        {!row.is_active && <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded border border-red-200">NON-AKTIF</span>}
+                                    </td>
+                                    <td className="px-6 py-4"><Badge color="blue">{row.level}</Badge></td>
+                                    <td className="px-6 py-4">{row.gender}</td>
+                                    <td className="px-6 py-4 font-medium">{row.age} Th</td>
+                                    <td className="px-6 py-4 text-slate-500">
+                                        {row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-'}
+                                    </td>
+                                    <td className="px-6 py-4">{row.marriage_status}</td>
+                                    <td className="px-6 py-4 text-slate-500">{highlightMatch(row.family_name, searchText)}</td>
+                                    <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
+                                    
+                                    <td 
+                                        className="px-6 py-4 text-center sticky right-0 z-20 bg-white group-hover:bg-indigo-50 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]"
+                                        onClick={(e) => e.stopPropagation()} 
+                                    >
+                                        <div className="flex justify-center gap-1">
+                                            <button 
+                                                onClick={() => navigate(`/members/${row.uuid}/edit`)}
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Edit size={16} />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(row)}
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-colors"
+                                                title="Hapus"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Search size={32} className="text-slate-300 mb-2" />
+                                            <p className="font-medium">Data tidak ditemukan</p>
+                                            <p className="text-xs">Coba ubah kata kunci atau filter pencarian Anda.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Pagination Footer */}
+                <div className="bg-white border-t border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <span className="text-sm text-slate-500">
+                        Menampilkan <span className="font-bold text-slate-800">{paginatedMembers.length}</span> dari <span className="font-bold text-slate-800">{processedMembers.length}</span> data
+                    </span>
+                    
+                    <div className="flex items-center gap-3">
+                        {/* Page Size Selector */}
+                        <div className="relative">
+                            <select 
+                                value={pageSize} 
+                                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg pl-3 pr-8 py-2 outline-none focus:border-indigo-500 cursor-pointer"
+                            >
+                                <option value={15}>15 baris</option>
+                                <option value={30}>30 baris</option>
+                                <option value={50}>50 baris</option>
+                                <option value={100}>100 baris</option>
+                            </select>
+                            <ArrowUpDown className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                        </div>
+
+                        {/* Pagination Controls */}
+                        <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                            <button 
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="px-3 py-2 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border-r border-slate-200 text-slate-600 transition-colors"
+                            >
+                                <ChevronLeft size={18} />
+                            </button>
+                            <div className="px-4 py-2 bg-white text-sm font-semibold text-slate-700 min-w-[80px] text-center">
+                                {currentPage} / {totalPages || 1}
+                            </div>
+                            <button 
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                                className="px-3 py-2 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed border-l border-slate-200 text-slate-600 transition-colors"
+                            >
+                                <ChevronRight size={18} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- FILTER MODAL (Tailwind) --- */}
+            {isFilterOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Filter size={18} className="text-indigo-600" /> Filter Data</h3>
+                            <button onClick={() => setIsFilterOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            {/* Status Keaktifan */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Status Keaktifan</label>
+                                <select 
+                                    value={memberStatus} 
+                                    onChange={(e) => setMemberStatus(e.target.value as any)}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                >
+                                    <option value="Aktif">Aktif Saja</option>
+                                    <option value="Tidak Aktif">Tidak Aktif Saja</option>
+                                    <option value="Semua">Semua Data</option>
+                                </select>
+                            </div>
+
+                            {/* Gender */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Jenis Kelamin</label>
+                                <div className="flex gap-3">
+                                    {['Laki - Laki', 'Perempuan'].map(g => (
+                                        <label key={g} className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 border rounded-xl transition-all ${selectedGender.includes(g) ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium' : 'hover:bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedGender.includes(g)}
+                                                onChange={(e) => {
+                                                    if(e.target.checked) setSelectedGender([...selectedGender, g]);
+                                                    else setSelectedGender(selectedGender.filter(x => x !== g));
+                                                }}
+                                                className="hidden" // Sembunyikan checkbox asli, gunakan styling label
+                                            />
+                                            {g}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* Level (Dropdown Multi) */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Jenjang Pendidikan</label>
+                                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                                    {Array.from(new Set(members.map(m => m.level))).filter(Boolean).sort().map(lvl => (
+                                        <label key={lvl} className={`flex items-center gap-2 cursor-pointer p-2.5 border rounded-lg transition-colors ${selectedLevel.includes(lvl) ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-slate-50 border-slate-200'}`}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedLevel.includes(lvl)}
+                                                onChange={(e) => {
+                                                    if(e.target.checked) setSelectedLevel([...selectedLevel, lvl]);
+                                                    else setSelectedLevel(selectedLevel.filter(x => x !== lvl));
+                                                }}
+                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500" 
+                                            />
+                                            <span className={`text-sm ${selectedLevel.includes(lvl) ? 'text-indigo-700 font-medium' : 'text-slate-600'}`}>{lvl}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-200">
+                            <button 
+                                onClick={() => {
+                                    setSelectedGender([]);
+                                    setSelectedLevel([]);
+                                    setSelectedMarriageStatus([]);
+                                    setMemberStatus('Aktif');
+                                }}
+                                className="px-4 py-2.5 text-slate-600 font-medium hover:bg-slate-200 rounded-xl transition-colors"
+                            >
+                                Reset
+                            </button>
+                            <button 
+                                onClick={() => setIsFilterOpen(false)}
+                                className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                            >
+                                Terapkan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- PASSWORD MODAL (Tailwind) --- */}
+            {openPasswordDialog && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <form onSubmit={handlePasswordSubmit} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-500">
+                            <Lock size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">Verifikasi Keamanan</h3>
+                        <p className="text-sm text-slate-500 mb-6">Masukkan password admin untuk melanjutkan tindakan ini.</p>
+                        
+                        <input 
+                            type="password" 
+                            autoFocus
+                            placeholder="Masukkan Password"
+                            value={passwordInput}
+                            onChange={(e) => setPasswordInput(e.target.value)}
+                            className="w-full px-4 py-3 text-center text-lg tracking-widest rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none mb-6"
+                        />
+                        
+                        <div className="flex gap-3">
+                            <button 
+                                type="button" 
+                                onClick={() => setOpenPasswordDialog(false)}
+                                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                            >
+                                Batal
+                            </button>
+                            <button 
+                                type="submit"
+                                disabled={loadingPassword}
+                                className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                            >
+                                {loadingPassword ? <Loader2 size={18} className="animate-spin" /> : 'Konfirmasi'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+        </div>
     );
 }

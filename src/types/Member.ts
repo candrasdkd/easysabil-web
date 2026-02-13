@@ -1,9 +1,9 @@
-import type { GridFilterModel, GridPaginationModel, GridSortModel } from '@mui/x-data-grid';
 import type { Dayjs } from 'dayjs';
 
 export interface Member {
     uuid: string; // Ganti dari id: number
     name: string;
+    alias: string;
     gender: string;
     age: string; // atau bisa diubah ke number kalau kamu konversi, tapi sekarang string
     date_of_birth: string;
@@ -66,84 +66,3 @@ export function getMembersStore(): Member[] {
 export function setMembersStore(members: Member[]) {
     return localStorage.setItem('members-store', JSON.stringify(members));
 }
-
-export async function getMany({
-    paginationModel,
-    filterModel,
-    sortModel,
-}: {
-    paginationModel: GridPaginationModel;
-    sortModel: GridSortModel;
-    filterModel: GridFilterModel;
-}): Promise<{ items: Member[]; itemCount: number }> {
-    const employeesStore = getMembersStore();
-
-    let filteredEmployees = [...employeesStore];
-
-    // Apply filters (example only)
-    if (filterModel?.items?.length) {
-        filterModel.items.forEach(({ field, value, operator }) => {
-            if (!field || value == null) {
-                return;
-            }
-
-            filteredEmployees = filteredEmployees.filter((employee) => {
-                const employeeValue = employee[field as keyof Member];
-
-                switch (operator) {
-                    case 'contains':
-                        return String(employeeValue).toLowerCase().includes(String(value).toLowerCase());
-                    case 'equals':
-                        return employeeValue === value;
-                    case 'startsWith':
-                        return String(employeeValue).toLowerCase().startsWith(String(value).toLowerCase());
-                    case 'endsWith':
-                        return String(employeeValue).toLowerCase().endsWith(String(value).toLowerCase());
-                    case '>':
-                        return employeeValue > value;
-                    case '<':
-                        return employeeValue < value;
-                    default:
-                        return true;
-                }
-            });
-        });
-    }
-
-    // Apply sorting
-    if (sortModel?.length) {
-        filteredEmployees.sort((a, b) => {
-            for (const { field, sort } of sortModel) {
-                if (a[field as keyof Member] < b[field as keyof Member]) {
-                    return sort === 'asc' ? -1 : 1;
-                }
-                if (a[field as keyof Member] > b[field as keyof Member]) {
-                    return sort === 'asc' ? 1 : -1;
-                }
-            }
-            return 0;
-        });
-    }
-
-    // Apply pagination
-    const start = paginationModel.page * paginationModel.pageSize;
-    const end = start + paginationModel.pageSize;
-    const paginatedEmployees = filteredEmployees.slice(start, end);
-
-    return {
-        items: paginatedEmployees,
-        itemCount: filteredEmployees.length,
-    };
-}
-
-export async function getOne(employeeId: string) {
-    const employeesStore = getMembersStore();
-
-    const employeeToShow = employeesStore.find((member) => member.uuid === employeeId);
-
-    if (!employeeToShow) {
-        throw new Error('Employee not found');
-    }
-    return employeeToShow;
-}
-

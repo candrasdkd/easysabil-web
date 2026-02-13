@@ -1,276 +1,140 @@
-import * as React from "react";
-import {
-    Box,
-    Grid,
-    Card,
-    CardContent,
-    CardActionArea,
-    Typography,
-    Chip,
-    Stack,
-    CircularProgress,
-    Alert,
-    IconButton,
-    Tooltip,
-} from "@mui/material";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import { supabase } from "../supabase/client"; // ⬅️ sesuaikan path
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from "react-router";
+import { supabase } from "../supabase/client";
+import { 
+    RefreshCw, 
+    AlertCircle, 
+    Calendar, 
+    Tag, 
+    ChevronRight, 
+    Loader2 
+} from 'lucide-react';
 
-
+// --- TYPES ---
 export interface OrderCategory {
     id: string;
     name: string;
-    price: number; // mapped from "price"
+    price: number;
     year: number;
 }
 
-export interface CategoryCardProps {
-    data: OrderCategory;
-    onSelect?: (c: OrderCategory) => void;
-    variant?: "accent" | "glass";
-    dense?: boolean;
-}
+type CategoryOrderRow = {
+    id: string;
+    name: string;
+    year: number;
+    price: string | number | null;
+};
 
-const formatPrice = (v: number, currency: string = "IDR") =>
+// --- HELPER FUNCTIONS ---
+const formatPrice = (v: number) =>
     new Intl.NumberFormat("id-ID", {
         style: "currency",
-        currency,
+        currency: "IDR",
         maximumFractionDigits: 0,
     }).format(v);
 
-// ===== Pretty helpers =====
+// Generate warna dinamis (Hue) berdasarkan string nama
 const stringHue = (s: string) => {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     return h % 360;
 };
 
-const gradientFor = (name: string) => {
-    const h = stringHue(name);
-    return `linear-gradient(135deg, hsl(${h} 70% 55% / 0.18), hsl(${(h + 40) % 360} 70% 55% / 0.10))`;
-};
-
-const softColor = (name: string) => `hsl(${stringHue(name)} 70% 45%)`;
-
-// ===== Variant A: Accent Top =====
-const CategoryCardAccent: React.FC<{
-    data: OrderCategory;
-    onSelect?: (c: OrderCategory) => void;
-    dense?: boolean;
-}> = ({ data, onSelect, dense }) => (
-    <Card
-        variant="outlined"
-        sx={{
-            borderRadius: 4,
-            height: "100%",
-            overflow: "hidden",
-            position: "relative",
-            borderColor: (t) =>
-                t.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(0,0,0,0.06)",
-            transition: "all 160ms ease",
-            "&:hover": { transform: "translateY(-4px)", boxShadow: 6 },
-        }}
-    >
-        <Box sx={{ height: 76, background: gradientFor(data.name) }} />
-
-        <Box sx={{ position: "absolute", top: 12, right: 12 }}>
-            <Chip
-                label={formatPrice(data.price)}
-                color="default"
-                sx={{
-                    bgcolor: (t) =>
-                        t.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(255,255,255,0.9)",
-                    backdropFilter: "blur(8px)",
-                    border: "1px solid",
-                    borderColor: (t) =>
-                        t.palette.mode === "dark"
-                            ? "rgba(255,255,255,0.16)"
-                            : "rgba(0,0,0,0.08)",
-                    fontWeight: 600,
-                }}
-            />
-        </Box>
-
-        <CardActionArea onClick={() => onSelect?.(data)} sx={{ height: "100%" }}>
-            <CardContent sx={{ py: dense ? 1.25 : 2.25 }}>
-                <Stack direction="row" spacing={2} alignItems="center">
-                    <Box
-                        sx={{
-                            width: dense ? 36 : 44,
-                            height: dense ? 36 : 44,
-                            borderRadius: "12px",
-                            bgcolor: (t) =>
-                                t.palette.mode === "dark"
-                                    ? "rgba(255,255,255,0.06)"
-                                    : "rgba(0,0,0,0.04)",
-                            border: "1px solid",
-                            borderColor: (t) =>
-                                t.palette.mode === "dark"
-                                    ? "rgba(255,255,255,0.12)"
-                                    : "rgba(0,0,0,0.06)",
-                            display: "grid",
-                            placeItems: "center",
-                        }}
-                    >
-                        <Typography fontWeight={700} sx={{ color: softColor(data.name) }}>
-                            {data.name.slice(0, 1).toUpperCase()}
-                        </Typography>
-                    </Box>
-
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            spacing={1}
-                        >
-                            <Typography variant={dense ? "subtitle2" : "subtitle1"} noWrap>
-                                {data.name}
-                            </Typography>
-                            <Chip
-                                size="small"
-                                label={data.year}
-                                sx={{ borderRadius: 1.5 }}
-                                variant="outlined"
-                            />
-                        </Stack>
-
-                        <Typography
-                            variant={dense ? "body2" : "body1"}
-                            color="text.secondary"
-                            sx={{ mt: 0.5 }}
-                        >
-                            {formatPrice(data.price)} / unit
-                        </Typography>
-                    </Box>
-                </Stack>
-            </CardContent>
-        </CardActionArea>
-    </Card>
-);
-
-// ===== Variant B: Glass Gradient =====
-const CategoryCardGlass: React.FC<{
-    data: OrderCategory;
-    onSelect?: (c: OrderCategory) => void;
-    dense?: boolean;
-}> = ({ data, onSelect, dense }) => {
+// --- COMPONENT: CATEGORY CARD ---
+const CategoryCard = ({ data, onSelect }: { data: OrderCategory; onSelect: (c: OrderCategory) => void }) => {
     const hue = stringHue(data.name);
+    
+    // Style dinamis untuk background gradient
+    const dynamicStyle = {
+        background: `linear-gradient(135deg, hsl(${hue} 70% 96% / 1), hsl(${(hue + 60) % 360} 70% 98% / 1))`,
+        borderColor: `hsl(${hue} 60% 90%)`,
+    };
+
+    const iconStyle = {
+        backgroundColor: `hsl(${hue} 70% 90%)`,
+        color: `hsl(${hue} 80% 30%)`,
+    };
+
     return (
-        <Card
-            sx={{
-                borderRadius: 4,
-                height: "100%",
-                overflow: "hidden",
-                position: "relative",
-                px: 0,
-                background: `linear-gradient(135deg, hsl(${hue} 70% 55% / 0.16), hsl(${(hue + 60) % 360
-                    } 70% 55% / 0.10))`,
-                border: "1px solid",
-                borderColor: (t) =>
-                    t.palette.mode === "dark"
-                        ? "rgba(255,255,255,0.08)"
-                        : "rgba(0,0,0,0.06)",
-                boxShadow: (t) =>
-                    t.palette.mode === "dark"
-                        ? "inset 0 1px 0 rgba(255,255,255,0.04)"
-                        : "inset 0 1px 0 rgba(255,255,255,0.5)",
-                transition: "transform 160ms ease, box-shadow 160ms ease",
-                "&:hover": { transform: "translateY(-4px)", boxShadow: 6 },
-            }}
+        <div 
+            onClick={() => onSelect(data)}
+            className="group relative overflow-hidden rounded-3xl border p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg cursor-pointer"
+            style={dynamicStyle}
         >
-            <Box
-                sx={{
-                    position: "absolute",
-                    inset: 0,
-                    pointerEvents: "none",
-                    background:
-                        "linear-gradient(120deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.14) 35%, rgba(255,255,255,0.0) 70%)",
-                    transform: "translateY(-30%) rotate(8deg)",
-                }}
-            />
+            {/* Dekorasi Background Abstrak */}
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 rounded-full opacity-20 blur-2xl" 
+                 style={{ backgroundColor: `hsl(${hue} 70% 60%)` }}></div>
+            
+            <div className="relative z-10 flex flex-col h-full justify-between gap-6">
+                
+                {/* Header Card */}
+                <div className="flex justify-between items-start">
+                    <div className="p-3 rounded-2xl" style={iconStyle}>
+                        <Tag size={24} />
+                    </div>
+                    <span className="flex items-center gap-1.5 px-3 py-1 bg-white/60 backdrop-blur-sm border border-white/50 rounded-full text-xs font-bold text-slate-600 shadow-sm">
+                        <Calendar size={12} /> {data.year}
+                    </span>
+                </div>
 
-            <CardActionArea onClick={() => onSelect?.(data)} sx={{ height: "100%" }}>
-                <CardContent sx={{ p: dense ? 1.5 : 2.5 }}>
-                    <Stack spacing={dense ? 1 : 1.5}>
-                        <Stack direction="row" alignItems="center" justifyContent="space-between">
-                            <Typography variant={dense ? "subtitle2" : "h6"} noWrap>
-                                {data.name}
-                            </Typography>
-                            <Chip
-                                size="small"
-                                label={data.year}
-                                sx={{ bgcolor: "background.paper", backdropFilter: "blur(6px)" }}
-                            />
-                        </Stack>
-
-                        <Typography variant={dense ? "h6" : "h5"} sx={{ fontWeight: 700 }}>
-                            {formatPrice(data.price)}
-                        </Typography>
-                    </Stack>
-                </CardContent>
-            </CardActionArea>
-        </Card>
+                {/* Content */}
+                <div>
+                    <h3 className="text-xl font-bold text-slate-800 mb-1 line-clamp-1" title={data.name}>
+                        {data.name}
+                    </h3>
+                    <div className="flex items-end justify-between">
+                        <div>
+                            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5">Harga Satuan</p>
+                            <p className="text-2xl font-black text-slate-900 tracking-tight">
+                                {formatPrice(data.price)}
+                            </p>
+                        </div>
+                        
+                        <div className="w-10 h-10 rounded-full bg-white border border-white/50 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-colors shadow-sm">
+                            <ChevronRight size={20} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 };
 
-// ===== Wrapper to switch variant =====
-const CategoryCard: React.FC<CategoryCardProps> = ({
-    data,
-    onSelect,
-    variant = "accent",
-    dense,
-}) => {
-    if (variant === "glass")
-        return <CategoryCardGlass data={data} onSelect={onSelect} dense={dense} />;
-    return <CategoryCardAccent data={data} onSelect={onSelect} dense={dense} />;
-};
-
-// ===== Screen with Supabase data =====
-type CategoryOrderRow = {
-    id: string;
-    name: string;
-    year: number;
-    price: string | number | null; // Supabase price bisa balik string
-};
-
+// --- MAIN PAGE COMPONENT ---
 export default function OrderCategoryScreen() {
-    const [rows, setRows] = React.useState<OrderCategory[]>([]);
-    const [loading, setLoading] = React.useState(true);
-    const [error, setError] = React.useState<string | null>(null);
+    const [rows, setRows] = useState<OrderCategory[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
-    const fetchData = React.useCallback(async () => {
+
+    const fetchData = useCallback(async () => {
         setLoading(true);
         setError(null);
-        const { data, error } = await supabase
-            .from("category_order")
-            .select("id,name,year,price")
-            .order("name", { ascending: true });
+        try {
+            const { data, error } = await supabase
+                .from("category_order")
+                .select("id,name,year,price")
+                // PERUBAHAN DI SINI: Urutkan berdasarkan 'year', descending (terbaru dulu)
+                .order("year", { ascending: false });
 
-        if (error) {
-            setError(error.message);
-            setRows([]);
-        } else {
-            const mapped: OrderCategory[] =
-                (data as CategoryOrderRow[]).map((r) => ({
-                    id: String(r.id),
-                    name: r.name,
-                    year: Number(r.year),
-                    // pastikan number; supabase price kadang string
-                    price: r.price === null ? 0 : Number(r.price),
-                })) ?? [];
+            if (error) throw error;
+
+            const mapped: OrderCategory[] = (data as CategoryOrderRow[]).map((r) => ({
+                id: String(r.id),
+                name: r.name,
+                year: Number(r.year),
+                price: r.price === null ? 0 : Number(r.price),
+            }));
             setRows(mapped);
+        } catch (err: any) {
+            setError(err.message);
+            setRows([]);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }, []);
 
     const handleSelect = (d: OrderCategory) => {
-        // Bentuk payload sesuai tipe SelectedCategoryProps di OrderListPage
         const selectedCategory = {
             id: d.id,
             name: d.name,
@@ -279,59 +143,76 @@ export default function OrderCategoryScreen() {
             price: String(d.price),
             year: d.year,
         };
-        navigate("/orders", { state: { selectedCategory } }); // ⬅️ kirim via state
+        navigate("/orders", { state: { selectedCategory } });
     };
 
-
-    React.useEffect(() => {
+    useEffect(() => {
         fetchData();
     }, [fetchData]);
 
     return (
-        <Box p={3}>
-            <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mb: 2 }}
-            >
-                <Typography variant="h6" fontWeight={700}>
-                    Kategori Pemesanan
-                </Typography>
-                <Tooltip title="Refresh">
-                    <IconButton onClick={fetchData} disabled={loading}>
-                        <RefreshIcon />
-                    </IconButton>
-                </Tooltip>
-            </Stack>
+        <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
+            
+            {/* Header Section */}
+            <div className="max-w-7xl mx-auto mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">Kategori Pemesanan</h1>
+                    <p className="text-sm text-slate-500 mt-1">Pilih kategori untuk melihat atau membuat pesanan baru.</p>
+                </div>
+                <button 
+                    onClick={fetchData} 
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm disabled:opacity-50"
+                >
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                    <span>Refresh</span>
+                </button>
+            </div>
 
-            {loading && (
-                <Box display="grid" py={6}>
-                    <CircularProgress />
-                </Box>
-            )}
+            <div className="max-w-7xl mx-auto">
+                {/* Loading State */}
+                {loading && (
+                    <div className="flex flex-col items-center justify-center py-20">
+                        <Loader2 className="animate-spin text-indigo-600 mb-4" size={40} />
+                        <p className="text-slate-500 font-medium">Memuat kategori...</p>
+                    </div>
+                )}
 
-            {!loading && error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                    Gagal memuat data: {error}
-                </Alert>
-            )}
+                {/* Error State */}
+                {!loading && error && (
+                    <div className="bg-red-50 border border-red-100 rounded-2xl p-6 flex items-center gap-4 text-red-700 mb-6">
+                        <AlertCircle size={24} />
+                        <div>
+                            <p className="font-bold">Gagal memuat data</p>
+                            <p className="text-sm">{error}</p>
+                        </div>
+                    </div>
+                )}
 
-            {!loading && !error && rows.length === 0 && (
-                <Alert severity="info">Belum ada data kategori.</Alert>
-            )}
+                {/* Empty State */}
+                {!loading && !error && rows.length === 0 && (
+                    <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-300">
+                        <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                            <Tag size={32} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-700">Belum ada kategori</h3>
+                        <p className="text-slate-500">Data kategori pesanan masih kosong.</p>
+                    </div>
+                )}
 
-            <Grid container spacing={3}>
-                {rows.map((item) => (
-                    <Grid key={item.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                        <CategoryCard
-                            data={item}
-                            variant="glass"
-                            onSelect={handleSelect}
-                        />
-                    </Grid>
-                ))}
-            </Grid>
-        </Box>
+                {/* Grid Data */}
+                {!loading && !error && rows.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {rows.map((item) => (
+                            <CategoryCard
+                                key={item.id}
+                                data={item}
+                                onSelect={handleSelect}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }

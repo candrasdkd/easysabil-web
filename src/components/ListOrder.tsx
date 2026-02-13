@@ -1,61 +1,15 @@
-// OrderListPage.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-
-// MUI
-import {
-    Box,
-    Stack,
-    Typography,
-    TextField,
-    IconButton,
-    Button,
-    Switch,
-    FormControlLabel,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    Select,
-    MenuItem,
-    InputLabel,
-    FormControl,
-    Paper,
-    Divider,
-    CardActions,
-    Grid,
-    Drawer,
-    Tooltip,
-    Checkbox,
-    Pagination,
-    Chip,
-    Card,
-    CardContent,
-    Avatar,
-    LinearProgress,
-    Alert,
-    useTheme,
-    useMediaQuery,
-} from "@mui/material";
-
-import {
-    FilterList,
-    Add,
-    Person,
-    Category as CategoryIcon,
-    ShoppingBag,
-    CheckCircle,
-    Payment,
-    Edit,
-    Delete,
-    Close,
-    Receipt,
-    TrendingUp,
-    Paid,
-    Pending,
-    Share,
-} from "@mui/icons-material";
-import { supabase } from "../supabase/client";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useLocation } from "react-router";
+import { supabase } from "../supabase/client";
+import dayjs from "dayjs";
+import { 
+    Search, Plus, Filter, Share2, User, 
+    ShoppingBag, CheckCircle2, CreditCard, Edit2, 
+    Trash2, X, TrendingUp, AlertCircle,
+    Loader2, ChevronDown, ListOrdered, ClipboardCheck,
+    Banknote, Wallet, ArrowRightLeft, AlertTriangle,
+    PieChart, Lock // Tambah icon Lock
+} from 'lucide-react';
 
 // =====================
 // Type Definitions
@@ -89,1427 +43,1042 @@ export type DataOrder = {
     note?: string | null;
     is_payment: boolean;
     actual_price: number;
+    money_holder?: string | null;
+    payment_method?: string | null;
     created_at?: string;
 };
 
-type Props = {
-    selectedCategory?: SelectedCategoryProps;
+const MONEY_HOLDERS = ['Sutoyo', 'Riko', 'Candra', 'Fahmi', 'Fachih'];
+const PAYMENT_METHODS = ['Cash', 'Transfer'];
+const AUTH_KEY = 'order_session'; // Key session storage
+const SESSION_DURATION = 30 * 60 * 1000; // 30 Menit
+
+const formatRupiah = (n: string | number): string => {
+    const num = typeof n === "string" ? parseInt(n.replace(/[^0-9-]/g, ""), 10) || 0 : Number(n) || 0;
+    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(num);
 };
 
-// =====================
-// Helpers
-// =====================
-function formatRupiah(n: string | number): string {
-    const num =
-        typeof n === "string"
-            ? parseInt(n.replace(/[^0-9-]/g, ""), 10) || 0
-            : Number(n) || 0;
-    return new Intl.NumberFormat("id-ID", {
-        style: "currency",
-        currency: "IDR",
-        maximumFractionDigits: 0,
-    }).format(num);
-}
-
-// =====================
-// Component
-// =====================
-const OrderListPage: React.FC<Props> = ({ selectedCategory }) => {
+const OrderListPage: React.FC = () => {
     const location = useLocation();
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-    const isSmallMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    const routeState = location.state as { selectedCategory?: SelectedCategoryProps } | undefined;
 
-    const routeState = location.state as
-        | { selectedCategory?: SelectedCategoryProps }
-        | undefined;
-
-    const selectedFromRoute = routeState?.selectedCategory;
+    // --- State Management ---
     const [dataOrder, setDataOrder] = useState<DataOrder[]>([]);
-    const [dataDropdownSensus, setDataDropdownSensus] = useState<DataDropdown[]>(
-        []
-    );
-    const [dataDropdownCategory, setDataDropdownCategory] = useState<
-        DataDropdown[]
-    >([]);
-
+    const [dataDropdownSensus, setDataDropdownSensus] = useState<DataDropdown[]>([]);
+    const [dataDropdownCategory, setDataDropdownCategory] = useState<DataDropdown[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const [page, setPage] = useState(0);
-    const [itemsPerPage, setItemsPerPage] = useState(50);
-
+    
+    // UI States
     const [searchQuery, setSearchQuery] = useState("");
     const [modalPayment, setModalPayment] = useState(false);
     const [modalCreate, setModalCreate] = useState(false);
     const [modalFilter, setModalFilter] = useState(false);
+    const [modalSummary, setModalSummary] = useState(false);
+    const [modalDelete, setModalDelete] = useState(false);
+    const [deleteId, setDeleteId] = useState<number | null>(null);
+
+    // AUTH & PASSWORD STATES
+    const [isAuthenticated, setIsAuthenticated] = useState(() => {
+        const storedTimestamp = localStorage.getItem(AUTH_KEY);
+        if (storedTimestamp) {
+            const now = Date.now();
+            if (now - parseInt(storedTimestamp, 10) < SESSION_DURATION) return true;
+            localStorage.removeItem(AUTH_KEY);
+        }
+        return false;
+    });
+    const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
+    const [passwordInput, setPasswordInput] = useState("");
+    const [loadingPassword, setLoadingPassword] = useState(false);
+    const [pendingAction, setPendingAction] = useState<{ type: 'create' | 'edit' | 'delete', payload?: any } | null>(null);
+
     const [uploading, setUploading] = useState(false);
     const [showAllData, setShowAllData] = useState(false);
     const [modalUpdate, setModalUpdate] = useState(false);
-    const [userLevel, setUserLevel] = useState<number | null>(null);
-    const [sheetOpen, setSheetOpen] = useState(false);
 
-    const [settingFilter, setSettingFilter] = useState<{
-        category: SelectedCategoryProps;
-        isPayment: boolean | null;
-    }>({
-        category:
-            selectedCategory || {
-                label: "",
-                value: "",
-                id: "",
-                name: "",
-                price: "",
-            },
-        isPayment: null,
+    // Searchable Member Dropdown
+    const [isMemberDropdownOpen, setIsMemberDropdownOpen] = useState(false);
+    const [memberSearch, setMemberSearch] = useState("");
+    const memberRef = useRef<HTMLDivElement>(null);
+
+    // Filter Settings
+    const [settingFilter, setSettingFilter] = useState({
+        category: routeState?.selectedCategory || { label: "", value: "", id: "", name: "", price: "" },
+        isPayment: null as boolean | null,
     });
 
-    const [dataUpload, setDataUpload] = useState<{
-        idCard: number | null;
-        user: { label: string; value: string; id: string };
-        category: SelectedCategoryProps;
-        totalOrder: string;
-        note: string;
-    }>({
-        idCard: null,
+    // Form Data
+    const [dataUpload, setDataUpload] = useState({
+        idCard: null as number | null,
         user: { label: "", value: "", id: "" },
-        category:
-            selectedCategory || { label: "", value: "", id: "", name: "", price: "" },
+        category: { label: "", value: "", id: "", name: "", price: "" } as SelectedCategoryProps,
         totalOrder: "",
         note: "",
+        isPayment: false,
+        moneyHolder: "",
+        paymentMethod: "Cash",
+        actualPrice: ""
     });
 
-    const [actualPrice, setActualPrice] = useState("");
+    // Payment Logic State (Quick Pay Modal)
+    const [actualPricePay, setActualPricePay] = useState("");
     const [isExactChange, setIsExactChange] = useState(false);
-    const [detailData, setDetailData] = useState<{
-        id: number;
-        price: string;
-        status: boolean;
-    }>({
-        id: 0,
-        price: "",
-        status: false,
-    });
+    const [paymentDetail, setPaymentDetail] = useState({ id: 0, price: 0, status: false });
 
-    // Derived totals
-    const grandTotal = useMemo(
-        () =>
-            dataOrder.reduce((total, item) => total + item.unit_price * item.total_order, 0),
-        [dataOrder]
-    );
-
-    const grandTotalActual = useMemo(
-        () => dataOrder.reduce((total, item) => total + (item.actual_price || 0), 0),
-        [dataOrder]
-    );
-    const calculateTotalItems = (data: DataOrder[]) =>
-        (data || []).reduce((total, order) => total + (order.total_order || 0), 0);
-
-    const totalPrice = (price: number, total: number) => String(price * total);
-
-    // Filters & pagination
+    // --- Logic: Filter & Statistics ---
     const filteredOrder = useMemo(() => {
         return dataOrder.filter((item) => {
-            const matchesSearch =
-                searchQuery === "" ||
-                item.user_name.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesPayment =
-                settingFilter.isPayment === null ||
-                item.is_payment === settingFilter.isPayment;
+            const matchesSearch = searchQuery === "" || item.user_name.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesPayment = settingFilter.isPayment === null || item.is_payment === settingFilter.isPayment;
             return matchesSearch && matchesPayment;
         });
     }, [dataOrder, searchQuery, settingFilter.isPayment]);
 
-    // Statistics
     const stats = useMemo(() => {
-        const totalItems = calculateTotalItems(filteredOrder);
+        const totalItems = filteredOrder.reduce((acc, curr) => acc + curr.total_order, 0);
         const paidOrders = filteredOrder.filter(item => item.is_payment).length;
-        const unpaidOrders = filteredOrder.length - paidOrders;
-        const paymentRate = filteredOrder.length > 0 ? (paidOrders / filteredOrder.length) * 100 : 0;
+        const totalValue = filteredOrder.reduce((acc, curr) => acc + (curr.unit_price * curr.total_order), 0);
+        const totalReceived = filteredOrder.reduce((acc, curr) => acc + (curr.actual_price || 0), 0);
+        
+        const holders: Record<string, number> = {};
+        MONEY_HOLDERS.forEach(h => holders[h] = 0); 
+        
+        const methods: Record<string, number> = { 'Cash': 0, 'Transfer': 0 };
+
+        filteredOrder.forEach(order => {
+            if (order.is_payment && order.actual_price > 0) {
+                if (order.money_holder) holders[order.money_holder] = (holders[order.money_holder] || 0) + order.actual_price;
+                if (order.payment_method) methods[order.payment_method] = (methods[order.payment_method] || 0) + order.actual_price;
+            }
+        });
 
         return {
             totalItems,
             paidOrders,
-            unpaidOrders,
-            paymentRate,
-            totalValue: grandTotal,
-            totalReceived: grandTotalActual,
+            unpaidOrders: filteredOrder.length - paidOrders,
+            paymentRate: filteredOrder.length > 0 ? (paidOrders / filteredOrder.length) * 100 : 0,
+            totalValue,
+            totalReceived,
+            gap: totalValue - totalReceived,
+            holders,
+            methods
         };
-    }, [filteredOrder, grandTotal, grandTotalActual]);
+    }, [filteredOrder]);
 
-    // Fetchers
+    const filteredMembers = dataDropdownSensus.filter(m => 
+        m.label.toLowerCase().includes(memberSearch.toLowerCase())
+    );
+
+    // --- Data Fetching ---
     const fetchDataOrder = useCallback(async () => {
-        setError(null);
+        setLoading(true);
         try {
-            let query = supabase.from("list_order").select("*").order("created_at", {
-                ascending: false,
-            });
-
+            let query = supabase.from("list_order").select("*").order("created_at", { ascending: false });
             if (settingFilter.category.id && !showAllData) {
                 query = query.eq("id_category_order", settingFilter.category.id);
             }
-
             const { data, error } = await query;
-            if (error) {
-                setError(error.message);
-                return;
-            }
+            if (error) throw error;
             setDataOrder((data as DataOrder[]) || []);
-        } catch (e) {
-            setError("Failed to fetch data");
-            console.error(e);
-        }
-    }, [settingFilter.category.id, showAllData]);
-
-    const fetchSensus = useCallback(async () => {
-        try {
-            const { data, error } = await supabase
-                .from("list_sensus")
-                .select("uuid,name")
-                .order("name", { ascending: true });
-            if (error) {
-                setError(error.message);
-                return;
-            }
-            const transformed: DataDropdown[] =
-                (data || []).map((item: any) => ({
-                    label: item.name,
-                    value: item.name,
-                    id: item.uuid,
-                })) ?? [];
-            setDataDropdownSensus(transformed);
-        } catch (e) {
-            setError("Failed to fetch data");
-            console.error(e);
-        }
-    }, []);
-
-    const fetchListOrder = useCallback(async () => {
-        try {
-            setLoading(true);
-            const { data, error } = await supabase
-                .from("category_order")
-                .select("*")
-                .order("created_at", { ascending: false });
-            if (error) {
-                setError(error.message);
-                return;
-            }
-            const transformed: DataDropdown[] =
-                (data || []).map((item: any) => ({
-                    ...item,
-                    label: `${item.name} ${item.year}`,
-                    value: `${item.name} ${item.year}`,
-                    id: item.id,
-                })) ?? [];
-            setDataDropdownCategory(transformed);
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            setError(e.message);
         } finally {
             setLoading(false);
         }
+    }, [settingFilter.category.id, showAllData]);
+
+    const fetchDropdowns = useCallback(async () => {
+        const [sensusRes, catRes] = await Promise.all([
+            supabase.from("list_sensus").select("uuid,name").order("name", { ascending: true }),
+            supabase.from("category_order").select("*").order("year", { ascending: false })
+        ]);
+
+        if (!sensusRes.error) {
+            setDataDropdownSensus(sensusRes.data.map(i => ({ label: i.name, value: i.name, id: i.uuid })));
+        }
+        if (!catRes.error) {
+            setDataDropdownCategory(catRes.data.map(i => ({ 
+                ...i, label: `${i.name} ${i.year}`, value: `${i.name} ${i.year}`, id: i.id 
+            })));
+        }
     }, []);
 
-    // CRUD handlers
-    const handleUpdateOrder = async () => {
-        try {
-            setUploading(true);
+    useEffect(() => {
+        fetchDropdowns();
+        fetchDataOrder();
+    }, [fetchDataOrder, fetchDropdowns]);
 
-            if (!isExactChange && (!actualPrice || actualPrice.trim() === "")) {
-                alert("Masukkan uang yang diterima");
-                return;
-            }
+    // --- Action & Auth Handlers ---
 
-            const numericPrice = isExactChange
-                ? parseInt(detailData.price.replace(/[^0-9]/g, ""), 10) || 0
-                : parseInt(actualPrice.replace(/[^0-9]/g, ""), 10) || 0;
+    // 1. Centralized Action Handler
+    const handleAction = (type: 'create' | 'edit' | 'delete', payload?: any) => {
+        // Cek apakah sesi masih valid
+        const stored = localStorage.getItem(AUTH_KEY);
+        const isValid = stored && (Date.now() - parseInt(stored, 10) < SESSION_DURATION);
 
-            const transformBody = {
-                actual_price: numericPrice,
-                is_payment: !detailData.status,
-            };
+        if (isAuthenticated && isValid) {
+            localStorage.setItem(AUTH_KEY, Date.now().toString()); // Refresh session
+            executeAction(type, payload);
+        } else {
+            setIsAuthenticated(false);
+            setPendingAction({ type, payload });
+            setOpenPasswordDialog(true);
+        }
+    };
 
-            const { error, status } = await supabase
-                .from("list_order")
-                .update(transformBody)
-                .eq("id", detailData.id)
-                .select();
+    const executeAction = (type: 'create' | 'edit' | 'delete', payload?: any) => {
+        if (type === 'create') {
+            resetForm();
+            setModalUpdate(false);
+            setModalCreate(true);
+        } else if (type === 'edit') {
+            const order = payload as DataOrder;
+            setDataUpload({
+                idCard: order.id,
+                user: { label: order.user_name, value: order.user_name, id: String(order.user_id) },
+                category: { label: order.name_category, value: order.name_category, id: String(order.id_category_order), name: order.name_category, price: String(order.unit_price) },
+                totalOrder: String(order.total_order),
+                note: order.note || "",
+                isPayment: order.is_payment,
+                moneyHolder: order.money_holder || "",
+                paymentMethod: order.payment_method || "Cash",
+                actualPrice: String(order.actual_price || "")
+            });
+            setMemberSearch(order.user_name);
+            setModalUpdate(true);
+            setModalCreate(true);
+        } else if (type === 'delete') {
+            setDeleteId(payload);
+            setModalDelete(true);
+        }
+    };
 
-            if (status === 200) {
-                alert("Berhasil: Data berhasil diupdate");
-                await fetchDataOrder();
-                handleResetPayment();
+    const handlePasswordSubmit = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!passwordInput.trim()) return;
+
+        setLoadingPassword(true);
+        setTimeout(() => {
+            if (passwordInput === "admin354") {
+                localStorage.setItem(AUTH_KEY, Date.now().toString());
+                setIsAuthenticated(true);
+                setOpenPasswordDialog(false);
+                setPasswordInput("");
+                if (pendingAction) executeAction(pendingAction.type, pendingAction.payload);
             } else {
-                alert(`Error: ${error?.message || "Gagal menyimpan data"}`);
+                alert("Password Salah!");
             }
+            setLoadingPassword(false);
+        }, 800);
+    };
+
+    const handleLockSession = () => {
+        localStorage.removeItem(AUTH_KEY);
+        setIsAuthenticated(false);
+        alert("Sesi dikunci.");
+    };
+
+    // ------------------------------------
+
+    // --- Auto Calculate Price for Form ---
+    useEffect(() => {
+        if (dataUpload.isPayment && dataUpload.totalOrder && dataUpload.category.price) {
+            if(dataUpload.actualPrice === "") {
+                const total = parseInt(dataUpload.totalOrder) * parseInt(dataUpload.category.price);
+                if (!isNaN(total)) {
+                    setDataUpload(prev => ({ ...prev, actualPrice: String(total) }));
+                }
+            }
+        }
+    }, [dataUpload.isPayment, dataUpload.totalOrder, dataUpload.category.price]);
+
+
+    const handleUpdatePayment = async () => {
+        if (!isExactChange && !actualPricePay) return alert("Masukkan jumlah uang");
+        setUploading(true);
+        try {
+            const numericPrice = isExactChange ? paymentDetail.price : parseInt(actualPricePay.replace(/[^0-9]/g, ""), 10);
+            const { error } = await supabase.from("list_order")
+                .update({ 
+                    actual_price: numericPrice, 
+                    is_payment: true,
+                    payment_method: 'Cash', 
+                    money_holder: 'Fachih' // Default for quick pay
+                })
+                .eq("id", paymentDetail.id);
+
+            if (error) throw error;
+            await fetchDataOrder();
+            setModalPayment(false);
+            setActualPricePay("");
         } catch (e: any) {
-            alert(`Error: ${e.message}`);
+            alert(e.message);
         } finally {
             setUploading(false);
         }
     };
 
-    const handleCreateOrUpdateOrder = async () => {
-        try {
-            if (
-                !dataUpload?.user?.value ||
-                !dataUpload?.user?.id ||
-                !dataUpload?.category?.id ||
-                !dataUpload?.category?.name ||
-                !dataUpload?.totalOrder
-            ) {
-                alert("Info: Semua field harus diisi");
-                return;
-            }
+    const handleSaveOrder = async () => {
+        if (!dataUpload.user.id || !dataUpload.category.id || !dataUpload.totalOrder) return alert("Lengkapi data pemesan & kategori");
+        
+        if (dataUpload.isPayment) {
+            if (!dataUpload.moneyHolder) return alert("Pilih siapa pemegang uang");
+            if (!dataUpload.actualPrice) return alert("Masukkan nominal uang");
+        }
 
-            const transformBody = {
+        setUploading(true);
+        try {
+            const body = {
                 user_name: dataUpload.user.value,
                 user_id: dataUpload.user.id,
-                id_category_order: parseInt(String(dataUpload.category.id), 10),
+                id_category_order: parseInt(String(dataUpload.category.id)),
                 name_category: dataUpload.category.label,
-                total_order: parseInt(dataUpload.totalOrder, 10),
-                unit_price: parseInt(String(dataUpload.category.price), 10),
+                total_order: parseInt(dataUpload.totalOrder),
+                unit_price: parseInt(String(dataUpload.category.price)),
                 note: dataUpload.note,
+                is_payment: dataUpload.isPayment,
+                money_holder: dataUpload.isPayment ? dataUpload.moneyHolder : null,
+                payment_method: dataUpload.isPayment ? dataUpload.paymentMethod : null,
+                actual_price: dataUpload.isPayment ? parseInt(dataUpload.actualPrice.replace(/[^0-9]/g, ""), 10) : 0
             };
 
-            setUploading(true);
+            const query = modalUpdate 
+                ? supabase.from("list_order").update(body).eq("id", dataUpload.idCard)
+                : supabase.from("list_order").insert([body]);
 
-            if (modalUpdate && dataUpload.idCard) {
-                const { error, status } = await supabase
-                    .from("list_order")
-                    .update(transformBody)
-                    .eq("id", dataUpload.idCard)
-                    .select();
-
-                if (status === 200) {
-                    alert("Berhasil: Data berhasil diupdate");
-                    await fetchDataOrder();
-                } else {
-                    alert(`Error: ${error?.message || "Gagal menyimpan data"}`);
-                }
-            } else {
-                const { error, status } = await supabase
-                    .from("list_order")
-                    .insert([transformBody])
-                    .select();
-
-                if (status === 201) {
-                    alert("Berhasil: Data berhasil dibuat");
-                    await fetchDataOrder();
-                } else {
-                    alert(`Error: ${error?.message || "Gagal menyimpan data"}`);
-                }
-            }
+            const { error } = await query;
+            if (error) throw error;
+            
+            await fetchDataOrder();
+            setModalCreate(false);
+            setModalUpdate(false);
+            resetForm();
         } catch (e: any) {
-            alert(`Error: ${e.message}`);
+            alert(e.message);
         } finally {
             setUploading(false);
-            handleResetUpload();
         }
     };
 
-    const handleDeleteUser = async (id: number) => {
-        const ok = confirm("Apakah Anda yakin ingin menghapus data ini?");
-        if (!ok) return;
-
-        const { error, status } = await supabase
-            .from("list_order")
-            .delete()
-            .eq("id", id);
-        if (error) {
-            setError(error.message);
-            return;
-        }
-        if (status === 204) {
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        setUploading(true);
+        try {
+            const { error } = await supabase.from("list_order").delete().eq("id", deleteId);
+            if (error) throw error;
             await fetchDataOrder();
-            alert("Berhasil: Data berhasil dihapus");
+            setModalDelete(false);
+            setDeleteId(null);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setUploading(false);
         }
     };
 
-    // Misc handlers
-    const handleResetPayment = () => {
-        setDetailData({ id: 0, price: "", status: false });
-        setActualPrice("");
-        setIsExactChange(false);
-        setModalPayment(false);
-    };
-
-    const handleResetUpload = () => {
-        setDataUpload({
+    const resetForm = () => {
+        setDataUpload({ 
             idCard: null,
-            user: { label: "", value: "", id: "" },
+            user: { label: "", value: "", id: "" }, 
             category: { label: "", value: "", id: "", name: "", price: "" },
-            totalOrder: "",
+            totalOrder: "", 
             note: "",
+            isPayment: false,
+            moneyHolder: "",
+            paymentMethod: "Cash",
+            actualPrice: ""
         });
-        setIsExactChange(false);
-        setModalUpdate(false);
-        setModalCreate(false);
+        setMemberSearch("");
+    }
+
+const copyReport = () => {
+        const currentDate = dayjs().format("DD MMM YYYY, HH:mm");
+        const categoryLabel = settingFilter.category.label || "SEMUA KATEGORI";
+
+        // 1. Header Laporan
+        let text = `*📦 LAPORAN PESANAN*\n`;
+        text += `🏷️ Kategori: ${categoryLabel}\n`;
+        text += `🗓️ Update: ${currentDate}\n`;
+        text += `=========================\n`;
+
+        // 2. Pisahkan Data (Belum Bayar vs Sudah Bayar)
+        const unpaid = filteredOrder.filter(item => !item.is_payment);
+        const paid = filteredOrder.filter(item => item.is_payment);
+
+        // 3. Bagian BELUM LUNAS (Prioritas ditampilkan di atas)
+        if (unpaid.length > 0) {
+            text += `\n*⏳ BELUM LUNAS (${unpaid.length} Orang)*\n`;
+            unpaid.forEach((item, idx) => {
+                const tagihan = item.unit_price * item.total_order;
+                text += `${idx + 1}. *${item.user_name}*\n`;
+                text += `   └ 📦 ${item.total_order} pcs  💰 ${formatRupiah(tagihan)}\n`;
+                if (item.note) text += `   └ 📝 _${item.note}_\n`;
+            });
+        }
+
+        // 4. Bagian SUDAH LUNAS
+        if (paid.length > 0) {
+            text += `\n*✅ SUDAH LUNAS (${paid.length} Orang)*\n`;
+            paid.forEach((item, idx) => {
+                text += `${idx + 1}. ${item.user_name} (${item.total_order} pcs)\n`;
+                // Opsional: Tampilkan detail pembayaran jika perlu
+                // text += `   └ Diterima: ${formatRupiah(item.actual_price)} via ${item.payment_method}\n`; 
+            });
+        }
+
+        // 5. Footer Ringkasan Keuangan
+        text += `\n=========================\n`;
+        text += `*📊 RINGKASAN KEUANGAN*\n`;
+        text += `📦 Total Barang: ${stats.totalItems} pcs\n`;
+        text += `💰 Potensi Omzet: ${formatRupiah(stats.totalValue)}\n`;
+        text += `-------------------------\n`;
+        text += `💵 Uang Masuk: ${formatRupiah(stats.totalReceived)}\n`;
+        
+        if (stats.gap > 0) {
+            text += `⚠️ *Belum Tertagih: ${formatRupiah(stats.gap)}*\n`;
+        } else {
+            text += `✨ *STATUS: LUNAS SEMUA* ✨\n`;
+        }
+
+        // 6. Copy ke Clipboard
+        navigator.clipboard.writeText(text).then(() => {
+            alert("Laporan berhasil disalin! Siap ditempel ke WhatsApp.");
+        }).catch((err) => {
+            console.error('Gagal menyalin: ', err);
+            alert("Gagal menyalin teks.");
+        });
     };
 
-    const handleCopyToClipboard = async () => {
-        let total = 0;
-        const list = filteredOrder
-            .map((item, idx) => {
-                const t = item.unit_price * item.total_order;
-                total += t;
-                return `${idx + 1}. ${item.user_name} (${item.total_order}/pcs)`;
-            })
-            .join("\n");
-
-        const filterStatus =
-            settingFilter.isPayment === null
-                ? ""
-                : `\n${settingFilter.isPayment ? "✅ Status : *LUNAS*" : "❌ Status : *BELUM LUNAS*"}`;
-
-        const finalText = `📋 *DAFTAR PESANAN* 📋
-*${(settingFilter.category.label || "").toUpperCase()}*
-
-📌 *RINGKASAN*
-📦 Total Pesanan : *${calculateTotalItems(filteredOrder)} pcs*
-💰 Total Harga : *${formatRupiah(total)}*${filterStatus}
-
-====================
-
-${list}`;
-
-        try {
-            await navigator.clipboard.writeText(finalText);
-            alert("Info: Data berhasil disalin ke clipboard");
-        } catch {
-            const ta = document.createElement("textarea");
-            ta.value = finalText;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            document.body.removeChild(ta);
-            alert("Info: Data berhasil disalin ke clipboard");
-        }
-
-        try {
-            if ((navigator as any).share) {
-                await (navigator as any).share({
-                    title: "Daftar Pesanan",
-                    text: finalText,
-                });
-            } else {
-                const url = `https://wa.me/?text=${encodeURIComponent(finalText)}`;
-                window.open(url, "_blank");
-            }
-        } catch {
-            // ignore cancel
-        }
-    };
-
-    const totalPages = Math.max(1, Math.ceil(filteredOrder.length / itemsPerPage));
-    const from = page * itemsPerPage;
-    const to = Math.min((page + 1) * itemsPerPage, filteredOrder.length);
-
-    // Effects
     useEffect(() => {
-        fetchListOrder();
-        fetchSensus();
-        try {
-            const raw = localStorage.getItem("userData");
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                setUserLevel(typeof parsed?.level === "number" ? parsed.level : null);
-            }
-        } catch {
-            // ignore
-        }
-    }, [fetchListOrder, fetchSensus]);
-
-    useEffect(() => {
-        if (settingFilter.category.id || showAllData) {
-            fetchDataOrder();
-        }
-    }, [fetchDataOrder, settingFilter.category.id, showAllData]);
-
-    useEffect(() => {
-        if (selectedFromRoute) {
-            setSettingFilter((prev) => ({ ...prev, category: selectedFromRoute }));
-        }
-    }, [selectedFromRoute]);
-
-    useEffect(() => {
-        if (selectedCategory && !selectedFromRoute) {
-            setSettingFilter((prev) => ({ ...prev, category: selectedCategory }));
-        }
-    }, [selectedCategory, selectedFromRoute]);
-
-    // Enhanced UI renderers
-    const renderOrderItem = (item: DataOrder) => {
-        const calculatedTotalPrice = item.unit_price * item.total_order;
-        const isPaid = !!item.is_payment;
-
-        return (
-            <Card
-                key={item.id}
-                elevation={1}
-                sx={{
-                    mb: 2,
-                    borderLeft: 4,
-                    borderLeftColor: isPaid ? "success.main" : "warning.main",
-                    transition: "all 0.2s ease-in-out",
-                    '&:hover': {
-                        boxShadow: 4,
-                        transform: 'translateY(-2px)',
-                    },
-                }}
-            >
-                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                    {/* Header */}
-                    <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        alignItems={{ xs: "flex-start", sm: "center" }}
-                        justifyContent="space-between"
-                        sx={{ mb: 2 }}
-                        spacing={1}
-                    >
-                        <Stack direction="row" alignItems="center" spacing={1.5}>
-                            <Avatar sx={{
-                                width: { xs: 32, sm: 40 },
-                                height: { xs: 32, sm: 40 },
-                                bgcolor: isPaid ? 'success.main' : 'warning.main'
-                            }}>
-                                <Person />
-                            </Avatar>
-                            <Box>
-                                <Typography variant="h6" fontWeight={600} fontSize={{ xs: "1rem", sm: "1.25rem" }}>
-                                    {item.user_name}
-                                </Typography>
-                                <Chip
-                                    label={isPaid ? "LUNAS" : "BELUM BAYAR"}
-                                    size="small"
-                                    color={isPaid ? "success" : "warning"}
-                                    variant={isPaid ? "filled" : "outlined"}
-                                />
-                            </Box>
-                        </Stack>
-                    </Stack>
-
-                    {/* Order Details */}
-                    <Grid container spacing={2} sx={{ mb: 2 }}>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Stack spacing={1}>
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                    <CategoryIcon fontSize="small" color="action" />
-                                    <Typography variant="body2" color="text.secondary">
-                                        Kategori
-                                    </Typography>
-                                </Stack>
-                                <Typography variant="body1" fontWeight={500}>
-                                    {item.name_category}
-                                </Typography>
-                            </Stack>
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Stack spacing={1}>
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                    <ShoppingBag fontSize="small" color="action" />
-                                    <Typography variant="body2" color="text.secondary">
-                                        Jumlah
-                                    </Typography>
-                                </Stack>
-                                <Typography variant="body1" fontWeight={500}>
-                                    {item.total_order} pcs
-                                </Typography>
-                            </Stack>
-                        </Grid>
-                    </Grid>
-
-                    {/* Price Details */}
-                    <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1, mb: 2 }}>
-                        <Stack spacing={1}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Typography variant="body2" color="text.secondary">
-                                    Harga Satuan
-                                </Typography>
-                                <Typography variant="body2" fontWeight={500}>
-                                    {formatRupiah(item.unit_price)}
-                                </Typography>
-                            </Stack>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Typography variant="body2" color="text.secondary">
-                                    Uang Diterima
-                                </Typography>
-                                <Typography
-                                    variant="body2"
-                                    fontWeight={500}
-                                    color={isPaid ? "success.main" : "text.secondary"}
-                                >
-                                    {formatRupiah(item.actual_price || 0)}
-                                </Typography>
-                            </Stack>
-                            <Divider />
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Typography variant="body1" fontWeight={600}>
-                                    Total
-                                </Typography>
-                                <Typography variant="h6" fontWeight={700} color="success.main" fontSize={{ xs: "1rem", sm: "1.25rem" }}>
-                                    {formatRupiah(calculatedTotalPrice)}
-                                </Typography>
-                            </Stack>
-                        </Stack>
-                    </Box>
-
-                    {item.note && (
-                        <Alert severity="info" sx={{ mb: 2 }}>
-                            <Typography variant="body2">
-                                <strong>Catatan:</strong> {item.note}
-                            </Typography>
-                        </Alert>
-                    )}
-
-                    {/* Actions */}
-                    <CardActions sx={{ p: 0, justifyContent: "space-between", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                        <Button
-                            variant={isPaid ? "outlined" : "contained"}
-                            color={isPaid ? "success" : "warning"}
-                            startIcon={isPaid ? <CheckCircle /> : <Payment />}
-                            onClick={() => {
-                                if (isPaid) {
-                                    alert("Info: Pembayaran sudah lunas");
-                                } else {
-                                    setDetailData({
-                                        id: item.id,
-                                        price: totalPrice(item.unit_price, item.total_order),
-                                        status: item.is_payment,
-                                    });
-                                    setActualPrice("");
-                                    setIsExactChange(false);
-                                    setModalPayment(true);
-                                }
-                            }}
-                            size="small"
-                            fullWidth={isMobile}
-                        >
-                            {isPaid ? "Lunas" : "Bayar"}
-                        </Button>
-
-                        {userLevel === 0 && (
-                            <Stack direction="row" spacing={0.5} width={{ xs: "100%", sm: "auto" }} justifyContent={{ xs: "space-between", sm: "flex-end" }}>
-                                <Tooltip title="Edit">
-                                    <IconButton
-                                        color="primary"
-                                        size="small"
-                                        onClick={() => {
-                                            setDataUpload({
-                                                idCard: item.id,
-                                                user: {
-                                                    label: item.user_name,
-                                                    value: item.user_name,
-                                                    id: String(item.user_id),
-                                                },
-                                                category: {
-                                                    label: item.name_category,
-                                                    value: item.name_category,
-                                                    id: String(item.id_category_order),
-                                                    name: item.name_category,
-                                                    price: String(item.unit_price),
-                                                },
-                                                totalOrder: String(item.total_order),
-                                                note: item.note || "",
-                                            });
-                                            setModalUpdate(true);
-                                            setModalCreate(true);
-                                        }}
-                                    >
-                                        <Edit fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Hapus">
-                                    <IconButton
-                                        color="error"
-                                        size="small"
-                                        onClick={() => handleDeleteUser(item.id)}
-                                    >
-                                        <Delete fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                            </Stack>
-                        )}
-                    </CardActions>
-                </CardContent>
-            </Card>
-        );
-    };
+        const handleClickOutside = (event: MouseEvent) => {
+            if (memberRef.current && !memberRef.current.contains(event.target as Node)) setIsMemberDropdownOpen(false);
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     return (
-        <Box sx={{ minHeight: "100vh", bgcolor: "background.default", color: "text.primary", pb: 8 }}>
-            {/* Top Bar dengan Stats */}
-            {(settingFilter.category.id || showAllData) ? (
-                <>
-                    {/* Header Section */}
-                    <Paper
-                        elevation={0}
-                        sx={{
-                            color: 'black',
-                            p: { xs: 2, sm: 3 },
-                            borderRadius: 0,
-                            mb: 3
-                        }}
-                    >
-                        <Stack spacing={2}>
-                            <Stack direction={{ xs: "row", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={2}>
-                                <Typography variant="h4" fontWeight={700} fontSize={{ xs: "1.5rem", sm: "2rem" }}>
-                                    Daftar Pesanan
-                                </Typography>
-                                <Chip
-                                    label={settingFilter.category.label || "Semua Kategori"}
-                                    color="secondary"
-                                    variant="filled"
-                                    sx={{ fontSize: { xs: "0.8rem", sm: "0.9rem" } }}
-                                />
-                            </Stack>
+        <div className="min-h-screen bg-slate-50 pb-20">
+            {/* Header Section */}
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                                <ShoppingBag className="text-indigo-600" /> Daftar Pesanan
+                            </h1>
+                            <p className="text-slate-500 text-sm mt-1">
+                                {settingFilter.category.label || "Semua Kategori"} • {filteredOrder.length} Data
+                            </p>
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-2 items-center">
+                            {isAuthenticated && (
+                                <button onClick={handleLockSession} className="flex items-center gap-2 px-3 py-2 bg-rose-50 text-rose-600 rounded-xl font-bold border border-rose-100 hover:bg-rose-100 transition-all mr-2">
+                                    <Lock size={16} /> Kunci
+                                </button>
+                            )}
+                            <button 
+                                onClick={copyReport}
+                                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 transition-all"
+                            >
+                                <Share2 size={18} /> Bagikan
+                            </button>
+                            <button 
+                                onClick={() => setModalFilter(true)}
+                                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 transition-all"
+                            >
+                                <Filter size={18} /> Filter
+                            </button>
+                            <button 
+                                onClick={() => handleAction('create')}
+                                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+                            >
+                                <Plus size={18} /> Tambah
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                        </Stack>
-                    </Paper>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                {/* Search Bar */}
+                <div className="relative mb-6">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input 
+                        type="text"
+                        placeholder="Cari nama pemesan..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm text-lg"
+                    />
+                </div>
 
-                    {/* Search and Actions */}
-                    <Box sx={{ px: { xs: 2, sm: 3 }, mb: 3 }}>
-                        <Paper elevation={1} sx={{ p: 2 }}>
-                            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-                                <TextField
-                                    value={searchQuery}
+                {/* Loading / Error States */}
+                {loading && <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>}
+                {error && <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-700 flex items-center gap-3"><AlertCircle /> {error}</div>}
+
+                {/* Orders Grid */}
+                {!loading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredOrder.length > 0 ? filteredOrder.map((order) => (
+                            <div key={order.id} className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all group">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-3 rounded-2xl ${order.is_payment ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                            <User size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-slate-900 leading-tight">{order.user_name}</h3>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${order.is_payment ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {order.is_payment ? 'Lunas' : 'Belum Bayar'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            onClick={() => handleAction('edit', order)}
+                                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                        >
+                                            <Edit2 size={16} />
+                                        </button>
+                                        <button 
+                                            onClick={() => handleAction('delete', order.id)}
+                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 mb-4">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-500">Item</span>
+                                        <span className="font-semibold text-slate-800">{order.name_category}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-500">Jumlah</span>
+                                        <span className="font-bold text-indigo-600 bg-indigo-50 px-2 rounded-lg">{order.total_order} pcs</span>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-100 flex justify-between items-end">
+                                        <div>
+                                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Total Tagihan</p>
+                                            <p className="text-lg font-black text-slate-900">{formatRupiah(order.unit_price * order.total_order)}</p>
+                                        </div>
+                                        {order.actual_price > 0 && (
+                                            <div className="text-right">
+                                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+                                                    Diterima ({order.money_holder || '?'})
+                                                </p>
+                                                <p className="text-sm font-bold text-emerald-600">{formatRupiah(order.actual_price)}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {order.note && (
+                                    <div className="mb-4 p-2 bg-slate-50 rounded-xl text-xs text-slate-500 italic">
+                                        "{order.note}"
+                                    </div>
+                                )}
+
+                                {!order.is_payment && (
+                                    <button 
+                                        onClick={() => {
+                                            setPaymentDetail({ id: order.id, price: order.unit_price * order.total_order, status: false });
+                                            setModalPayment(true);
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all"
+                                    >
+                                        <CreditCard size={18} /> Bayar Sekarang
+                                    </button>
+                                )}
+                            </div>
+                        )) : (
+                            <div className="col-span-full py-20 text-center">
+                                <div className="bg-white inline-block p-6 rounded-full mb-4 shadow-sm border border-slate-100">
+                                    <ShoppingBag size={48} className="text-slate-300" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-800">Tidak Ada Pesanan</h3>
+                                <p className="text-slate-500">Coba ubah filter atau tambah pesanan baru.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* --- FAB Summary Button --- */}
+            <button 
+                onClick={() => setModalSummary(true)}
+                className="fixed bottom-6 right-6 flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-full font-bold shadow-2xl shadow-emerald-200 hover:bg-emerald-700 transition-all z-40"
+            >
+                <TrendingUp size={20} />
+                <span className="hidden sm:inline">Lihat Ringkasan</span>
+            </button>
+
+            {/* --- Modals --- */}
+            
+            {/* Modal: Summary (DETAILED) */}
+            {modalSummary && (
+                <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
+                    <div className="bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] w-full max-w-4xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                            <h3 className="font-black text-2xl text-slate-900 flex items-center gap-3">
+                                <TrendingUp className="text-emerald-500" /> Ringkasan Lengkap
+                            </h3>
+                            <button onClick={() => setModalSummary(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-all"><X /></button>
+                        </div>
+                        
+                        <div className="p-8 overflow-y-auto">
+                            {/* Top Stats Cards */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+                                <div className="p-4 bg-slate-50 rounded-3xl text-center border border-slate-100">
+                                    <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Total Item</p>
+                                    <p className="text-xl font-black text-slate-800">{stats.totalItems}</p>
+                                </div>
+                                <div className="p-4 bg-emerald-50 rounded-3xl text-center border border-emerald-100">
+                                    <p className="text-[10px] uppercase font-bold text-emerald-500 mb-1">Lunas</p>
+                                    <p className="text-xl font-black text-emerald-700">{stats.paidOrders}</p>
+                                </div>
+                                <div className="p-4 bg-amber-50 rounded-3xl text-center border border-amber-100">
+                                    <p className="text-[10px] uppercase font-bold text-amber-500 mb-1">Hutang</p>
+                                    <p className="text-xl font-black text-amber-700">{stats.unpaidOrders}</p>
+                                </div>
+                                <div className="p-4 bg-indigo-50 rounded-3xl text-center border border-indigo-100">
+                                    <p className="text-[10px] uppercase font-bold text-indigo-500 mb-1">Rate</p>
+                                    <p className="text-xl font-black text-indigo-700">{stats.paymentRate.toFixed(0)}%</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                {/* Left: Financial Summary */}
+                                <div className="space-y-6">
+                                    <h4 className="font-bold text-lg text-slate-700 flex items-center gap-2">
+                                        <PieChart size={20} className="text-slate-400" /> Keuangan
+                                    </h4>
+                                    
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center p-5 bg-slate-900 text-white rounded-[2rem]">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-3 bg-white/10 rounded-2xl"><CreditCard /></div>
+                                                <div>
+                                                    <p className="text-xs text-slate-400 font-medium">POTENSI TOTAL</p>
+                                                    <span className="font-bold text-lg">Nilai Pesanan</span>
+                                                </div>
+                                            </div>
+                                            <span className="text-xl font-black">{formatRupiah(stats.totalValue)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center p-5 bg-emerald-600 text-white rounded-[2rem]">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-3 bg-white/10 rounded-2xl"><Banknote /></div>
+                                                <div>
+                                                    <p className="text-xs text-emerald-200 font-medium">UANG MASUK</p>
+                                                    <span className="font-bold text-lg">Total Diterima</span>
+                                                </div>
+                                            </div>
+                                            <span className="text-xl font-black">{formatRupiah(stats.totalReceived)}</span>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50">
+                                                <p className="text-xs font-bold text-slate-400 mb-1">CASH</p>
+                                                <p className="text-lg font-black text-slate-800">{formatRupiah(stats.methods['Cash'] || 0)}</p>
+                                            </div>
+                                            <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50">
+                                                <p className="text-xs font-bold text-slate-400 mb-1">TRANSFER</p>
+                                                <p className="text-lg font-black text-slate-800">{formatRupiah(stats.methods['Transfer'] || 0)}</p>
+                                            </div>
+                                        </div>
+
+                                        {stats.gap > 0 && (
+                                            <div className="flex justify-between items-center p-5 bg-rose-50 border border-rose-100 rounded-[2rem] text-rose-700">
+                                                <span className="font-bold">Sisa Belum Dibayar</span>
+                                                <span className="text-xl font-black">{formatRupiah(stats.gap)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right: Money Holders Breakdown */}
+                                <div className="space-y-6">
+                                    <h4 className="font-bold text-lg text-slate-700 flex items-center gap-2">
+                                        <Wallet size={20} className="text-slate-400" /> Rincian Pemegang Uang
+                                    </h4>
+                                    
+                                    <div className="bg-slate-50 border border-slate-200 rounded-[2rem] p-6">
+                                        <div className="space-y-4">
+                                            {MONEY_HOLDERS.map(holder => {
+                                                const amount = stats.holders[holder] || 0;
+                                                return (
+                                                    <div key={holder} className="flex items-center justify-between pb-4 border-b border-slate-200 last:border-0 last:pb-0">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${amount > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>
+                                                                {holder.charAt(0)}
+                                                            </div>
+                                                            <span className={`font-medium ${amount > 0 ? 'text-slate-800' : 'text-slate-400'}`}>{holder}</span>
+                                                        </div>
+                                                        <span className={`font-bold ${amount > 0 ? 'text-slate-900' : 'text-slate-300'}`}>
+                                                            {amount > 0 ? formatRupiah(amount) : '-'}
+                                                        </span>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                        <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-center">
+                                            <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">Total Terpegang</span>
+                                            <span className="text-lg font-black text-indigo-700">{formatRupiah(stats.totalReceived)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 border-t border-slate-100 bg-slate-50">
+                            <button onClick={() => setModalSummary(false)} className="w-full py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-100 transition-all shadow-sm">Tutup Ringkasan</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Create/Update */}
+            {modalCreate && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                        <div className="p-6 bg-white border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="font-bold text-xl text-slate-800">{modalUpdate ? "Edit Pesanan" : "Pesanan Baru"}</h3>
+                            <button onClick={() => { setModalCreate(false); resetForm(); }} className="p-2 hover:bg-slate-100 rounded-full transition-all"><X /></button>
+                        </div>
+                        <div className="p-8 space-y-5 overflow-y-auto">
+                            {/* Searchable Member Dropdown */}
+                            <div className="space-y-2" ref={memberRef}>
+                                <label className="text-sm font-bold text-slate-700">Nama Pemesan</label>
+                                <div className="relative">
+                                    <div 
+                                        className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 cursor-pointer focus-within:border-indigo-500 focus-within:bg-white transition-all"
+                                        onClick={() => setIsMemberDropdownOpen(!isMemberDropdownOpen)}
+                                    >
+                                        <Search className="text-slate-400 mr-3" size={18} />
+                                        <input 
+                                            type="text"
+                                            placeholder="Cari nama..."
+                                            className="bg-transparent outline-none w-full font-medium"
+                                            value={memberSearch}
+                                            onChange={(e) => { setMemberSearch(e.target.value); setIsMemberDropdownOpen(true); }}
+                                        />
+                                        <ChevronDown className={`text-slate-400 transition-transform ${isMemberDropdownOpen ? 'rotate-180' : ''}`} size={18} />
+                                    </div>
+                                    
+                                    {isMemberDropdownOpen && (
+                                        <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in zoom-in-95 duration-150">
+                                            {filteredMembers.length > 0 ? filteredMembers.map(m => (
+                                                <div 
+                                                    key={m.id}
+                                                    className="px-4 py-3 hover:bg-indigo-50 cursor-pointer flex items-center justify-between border-b border-slate-50 last:border-0"
+                                                    onClick={() => {
+                                                        setDataUpload({ ...dataUpload, user: { label: m.label, value: m.label, id: String(m.id) } });
+                                                        setMemberSearch(m.label);
+                                                        setIsMemberDropdownOpen(false);
+                                                    }}
+                                                >
+                                                    <span className="font-medium text-slate-700">{m.label}</span>
+                                                    {dataUpload.user.id === String(m.id) && <CheckCircle2 className="text-indigo-600" size={16} />}
+                                                </div>
+                                            )) : <div className="px-4 py-6 text-center text-slate-400 text-sm italic">Nama tidak ditemukan</div>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Kategori Item</label>
+                                <select 
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 transition-all font-medium appearance-none"
+                                    value={dataUpload.category.label}
                                     onChange={(e) => {
-                                        setPage(0);
-                                        setSearchQuery(e.target.value);
-                                    }}
-                                    placeholder="Cari nama pemesan..."
-                                    size="medium"
-                                    fullWidth
-                                    variant="outlined"
-                                />
-                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} width={{ xs: "100%", sm: "auto" }}>
-                                    <Tooltip title="Filter Data">
-                                        <Button
-                                            variant="outlined"
-                                            startIcon={<FilterList />}
-                                            onClick={() => setModalFilter(true)}
-                                            fullWidth={isMobile}
-                                        >
-                                            {isMobile ? "Filter" : "Filter Data"}
-                                        </Button>
-                                    </Tooltip>
-                                    <Tooltip title="Salin & Bagikan">
-                                        <Button
-                                            variant="outlined"
-                                            startIcon={<Share />}
-                                            onClick={handleCopyToClipboard}
-                                            fullWidth={isMobile}
-                                        >
-                                            {isMobile ? "Bagikan" : "Salin & Bagikan"}
-                                        </Button>
-                                    </Tooltip>
-                                    <Tooltip title="Tambah Pesanan Baru">
-                                        <Button
-                                            variant="contained"
-                                            startIcon={<Add />}
-                                            onClick={() => {
-                                                setModalUpdate(false);
-                                                setModalCreate(true);
-                                            }}
-                                            sx={{ minWidth: { xs: "auto", sm: 140 } }}
-                                            fullWidth={isMobile}
-                                        >
-                                            {isMobile ? "Tambah" : "Tambah Pesanan"}
-                                        </Button>
-                                    </Tooltip>
-                                </Stack>
-                            </Stack>
-                        </Paper>
-                    </Box>
-
-                    {/* Static Summary Button */}
-                    <Box sx={{
-                        position: 'fixed',
-                        bottom: 16,
-                        right: 16,
-                        zIndex: 1000,
-                        display: (settingFilter.category.id || showAllData) && !loading && !error && filteredOrder.length > 0 ? 'block' : 'none'
-                    }}>
-                        <Button
-                            variant="contained"
-                            color="success"
-                            startIcon={<TrendingUp />}
-                            onClick={() => setSheetOpen(true)}
-                            size="large"
-                            sx={{
-                                borderRadius: 3,
-                                boxShadow: 3,
-                                minWidth: 'auto',
-                                px: 3,
-                                py: 1.5,
-                                fontSize: { xs: '0.8rem', sm: '0.9rem' }
-                            }}
-                        >
-                            {isMobile ? "Ringkasan" : "Lihat Ringkasan"}
-                        </Button>
-                    </Box>
-
-                    {/* Content */}
-                    <Box sx={{ px: { xs: 2, sm: 3 } }}>
-                        {loading ? (
-                            <Box sx={{ textAlign: "center", py: 5 }}>
-                                <LinearProgress sx={{ mb: 2 }} />
-                                <Typography>Memuat data...</Typography>
-                            </Box>
-                        ) : error ? (
-                            <Alert severity="error" sx={{ mb: 2 }}>
-                                {error}
-                            </Alert>
-                        ) : filteredOrder.length === 0 ? (
-                            <Paper sx={{ textAlign: "center", py: 8 }}>
-                                <Receipt sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                                <Typography variant="h6" color="text.secondary">
-                                    Tidak ada data pesanan
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                    {searchQuery ? 'Coba ubah kata kunci pencarian' : 'Mulai dengan menambahkan pesanan baru'}
-                                </Typography>
-                                <Button
-                                    variant="contained"
-                                    startIcon={<Add />}
-                                    onClick={() => {
-                                        setModalUpdate(false);
-                                        setModalCreate(true);
+                                        const sel = dataDropdownCategory.find(d => d.value === e.target.value);
+                                        if (sel) setDataUpload({...dataUpload, category: { id: String(sel.id), name: String(sel.name), label: sel.label, value: sel.label, price: String(sel.price) }});
                                     }}
                                 >
-                                    Tambah Pesanan
-                                </Button>
-                            </Paper>
-                        ) : (
-                            <>
-                                <Box>
-                                    {filteredOrder.slice(from, to).map((item) => renderOrderItem(item))}
-                                </Box>
+                                    <option value="">Pilih Kategori</option>
+                                    {dataDropdownCategory.map(c => <option key={c.id} value={c.value}>{c.label}</option>)}
+                                </select>
+                            </div>
 
-                                {/* Pagination */}
-                                <Paper elevation={1} sx={{ p: 2, mt: 2 }}>
-                                    <Grid container alignItems="center" justifyContent="space-between" spacing={2}>
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                Menampilkan {from + 1}-{to} dari {filteredOrder.length} data
-                                            </Typography>
-                                        </Grid>
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }} justifyContent="flex-end">
-                                                <FormControl size="small" variant="outlined" fullWidth={isMobile}>
-                                                    <InputLabel>Per Halaman</InputLabel>
-                                                    <Select
-                                                        value={itemsPerPage}
-                                                        label="Per Halaman"
-                                                        onChange={(e) => {
-                                                            const v = Number(e.target.value);
-                                                            setItemsPerPage(v);
-                                                            setPage(0);
-                                                        }}
-                                                        sx={{ minWidth: { xs: "100%", sm: 120 } }}
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Jumlah Pesanan (pcs)</label>
+                                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+                                    <ListOrdered className="text-slate-400 mr-3" size={18} />
+                                    <input 
+                                        type="number"
+                                        placeholder="0"
+                                        className="bg-transparent outline-none w-full font-bold text-lg"
+                                        value={dataUpload.totalOrder}
+                                        onChange={(e) => setDataUpload({...dataUpload, totalOrder: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* --- PAYMENT TOGGLE SECTION (MOVED UP) --- */}
+                            <div className="pt-2">
+                                <label className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer border-2 transition-all ${dataUpload.isPayment ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-xl ${dataUpload.isPayment ? 'bg-emerald-200 text-emerald-800' : 'bg-slate-200 text-slate-500'}`}>
+                                            <CheckCircle2 size={20} />
+                                        </div>
+                                        <span className={`font-bold ${dataUpload.isPayment ? 'text-emerald-800' : 'text-slate-600'}`}>Sudah Bayar Lunas?</span>
+                                    </div>
+                                    <div className={`w-12 h-7 rounded-full p-1 transition-colors ${dataUpload.isPayment ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                                        <div className={`bg-white w-5 h-5 rounded-full shadow-sm transition-transform ${dataUpload.isPayment ? 'translate-x-5' : ''}`}></div>
+                                    </div>
+                                    <input type="checkbox" className="hidden" checked={dataUpload.isPayment} onChange={(e) => setDataUpload({...dataUpload, isPayment: e.target.checked})} />
+                                </label>
+
+                                {/* CONDITIONAL PAYMENT FIELDS */}
+                                {dataUpload.isPayment && (
+                                    <div className="mt-4 space-y-4 animate-in slide-in-from-top-2 fade-in">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">Pemegang Uang</label>
+                                                <div className="relative">
+                                                    <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                                    <select 
+                                                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 appearance-none text-sm font-medium"
+                                                        value={dataUpload.moneyHolder}
+                                                        onChange={(e) => setDataUpload({...dataUpload, moneyHolder: e.target.value})}
                                                     >
-                                                        {[25, 50, 100].map((n) => (
-                                                            <MenuItem key={n} value={n}>
-                                                                {n} data
-                                                            </MenuItem>
-                                                        ))}
-                                                    </Select>
-                                                </FormControl>
-                                                <Pagination
-                                                    color="primary"
-                                                    count={totalPages}
-                                                    page={page + 1}
-                                                    onChange={(_, p) => setPage(p - 1)}
-                                                    showFirstButton
-                                                    showLastButton
-                                                    size={isSmallMobile ? "small" : "medium"}
+                                                        <option value="">Pilih...</option>
+                                                        {MONEY_HOLDERS.map(h => <option key={h} value={h}>{h}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">Metode</label>
+                                                <div className="relative">
+                                                    <ArrowRightLeft className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                                    <select 
+                                                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 appearance-none text-sm font-medium"
+                                                        value={dataUpload.paymentMethod}
+                                                        onChange={(e) => setDataUpload({...dataUpload, paymentMethod: e.target.value})}
+                                                    >
+                                                        {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Nominal (Rp)</label>
+                                            <div className="relative">
+                                                <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={18} />
+                                                <input 
+                                                    type="number"
+                                                    className="w-full pl-10 pr-4 py-3 bg-emerald-50/50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 text-emerald-800 font-bold"
+                                                    value={dataUpload.actualPrice}
+                                                    onChange={(e) => setDataUpload({...dataUpload, actualPrice: e.target.value})}
+                                                    placeholder="0"
                                                 />
-                                            </Stack>
-                                        </Grid>
-                                    </Grid>
-                                </Paper>
-                            </>
-                        )}
-                    </Box>
-                </>
-            ) : (
-                // Selector awal kategori
-                <Box
-                    sx={{
-                        minHeight: "80vh",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        p: 3,
-                    }}
-                >
-                    <Paper
-                        elevation={3}
-                        sx={{
-                            width: { xs: "100%", sm: 600 },
-                            p: { xs: 3, sm: 4 },
-                            textAlign: 'center'
-                        }}
-                    >
-                        <Receipt sx={{ fontSize: { xs: 48, sm: 64 }, color: 'primary.main', mb: 3 }} />
-                        <Typography variant="h4" fontWeight={700} gutterBottom fontSize={{ xs: "1.5rem", sm: "2rem" }}>
-                            Daftar Pesanan
-                        </Typography>
-                        <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                            Pilih kategori pesanan yang ingin Anda kelola
-                        </Typography>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
-                        <FormControl fullWidth sx={{ mb: 3 }}>
-                            <InputLabel id="cat-label">Pilih Kategori Pesanan</InputLabel>
-                            <Select
-                                labelId="cat-label"
-                                label="Pilih Kategori Pesanan"
-                                value={settingFilter.category?.label || ""}
-                                onChange={(e) => {
-                                    const sel = dataDropdownCategory.find(
-                                        (d) => `${d.name} ${d.year}` === e.target.value
-                                    );
-                                    if (!sel) return;
-                                    setSettingFilter({
-                                        ...settingFilter,
-                                        category: {
-                                            ...sel,
-                                            label: `${sel.name} ${sel.year}`,
-                                            value: `${sel.name} ${sel.year}`,
-                                            price: String(sel.price ?? ""),
-                                            id: String(sel.id),
-                                            name: sel.name || "",
-                                        } as SelectedCategoryProps,
-                                    });
-                                }}
-                                variant="outlined"
-                            >
-                                <MenuItem value="">-- Pilih Kategori --</MenuItem>
-                                {dataDropdownCategory.map((d) => (
-                                    <MenuItem key={String(d.id)} value={`${d.name} ${d.year}`}>
-                                        {d.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={showAllData}
-                                    onChange={(e) => setShowAllData(e.target.checked)}
-                                    color="primary"
+                            <div className="space-y-2 pt-2">
+                                <label className="text-sm font-bold text-slate-700">Catatan (Opsional)</label>
+                                <textarea 
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 transition-all text-sm min-h-[80px]"
+                                    placeholder="Contoh: Ukuran L, warna hitam, dsb..."
+                                    value={dataUpload.note}
+                                    onChange={(e) => setDataUpload({...dataUpload, note: e.target.value})}
                                 />
-                            }
-                            label="Tampilkan semua data dari semua kategori"
-                        />
-                    </Paper>
-                </Box>
+                            </div>
+
+                        </div>
+                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-3">
+                            <button onClick={() => { setModalCreate(false); resetForm(); }} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition-all">Batal</button>
+                            <button 
+                                onClick={handleSaveOrder} 
+                                disabled={uploading}
+                                className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex justify-center items-center gap-2"
+                            >
+                                {uploading ? <Loader2 className="animate-spin" /> : <Save size={18} />}
+                                {modalUpdate ? "Update" : "Simpan"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
-            <Dialog
-                open={modalFilter}
-                onClose={() => setModalFilter(false)}
-                fullWidth
-                maxWidth="sm"
-                PaperProps={{
-                    elevation: 8,
-                }}
-            >
-                <DialogTitle sx={{
-                    bgcolor: 'primary.main',
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                }}>
-                    <Typography variant="h6" fontWeight={600}>
-                        <FilterList sx={{ verticalAlign: 'middle', mr: 1 }} />
-                        Filter Data
-                    </Typography>
-                    <IconButton
-                        onClick={() => setModalFilter(false)}
-                        sx={{ color: 'white' }}
-                    >
-                        <Close />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent dividers sx={{ p: 3 }}>
-                    <Stack spacing={3}>
-                        {/* Filter by Category */}
-                        <FormControl fullWidth>
-                            <InputLabel id="filter-category-label">Kategori Pesanan</InputLabel>
-                            <Select
-                                labelId="filter-category-label"
-                                label="Kategori Pesanan"
-                                value={settingFilter.category?.label || ""}
-                                onChange={(e) => {
-                                    const sel = dataDropdownCategory.find(
-                                        (d) => `${d.name} ${d.year}` === e.target.value
-                                    );
-                                    if (!sel) return;
-                                    setSettingFilter(prev => ({
-                                        ...prev,
-                                        category: {
-                                            ...sel,
-                                            label: `${sel.name} ${sel.year}`,
-                                            value: `${sel.name} ${sel.year}`,
-                                            price: String(sel.price ?? ""),
-                                            id: String(sel.id),
-                                            name: sel.name || "",
-                                        } as SelectedCategoryProps,
-                                    }));
-                                }}
-                                variant="outlined"
-                            >
-                                <MenuItem value="">Semua Kategori</MenuItem>
-                                {dataDropdownCategory.map((d) => (
-                                    <MenuItem key={String(d.id)} value={`${d.name} ${d.year}`}>
-                                        {d.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
 
-                        {/* Filter by Payment Status */}
-                        <FormControl fullWidth>
-                            <InputLabel id="filter-payment-label">Status Pembayaran</InputLabel>
-                            <Select
-                                labelId="filter-payment-label"
-                                label="Status Pembayaran"
-                                value={settingFilter.isPayment === null ? '' : settingFilter.isPayment ? 'paid' : 'unpaid'}
-                                onChange={(e) => {
-                                    const value = String(e.target.value);
-                                    setSettingFilter(prev => ({
-                                        ...prev,
-                                        isPayment: value === '' ? null : value === 'paid'
-                                    }));
-                                }}
-                                variant="outlined"
+            {/* Modal: Delete Confirmation (Custom) */}
+            {modalDelete && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center">
+                        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+                            <AlertTriangle size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Pesanan?</h3>
+                        <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                            Data yang dihapus tidak dapat dikembalikan. Apakah Anda yakin ingin melanjutkan?
+                        </p>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => { setModalDelete(false); setDeleteId(null); }}
+                                className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all"
                             >
-                                <MenuItem value="">Semua Status</MenuItem>
-                                <MenuItem value="paid">Sudah Bayar</MenuItem>
-                                <MenuItem value="unpaid">Belum Bayar</MenuItem>
-                            </Select>
-                        </FormControl>
+                                Batal
+                            </button>
+                            <button 
+                                onClick={confirmDelete}
+                                disabled={uploading}
+                                className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all flex justify-center items-center gap-2"
+                            >
+                                {uploading ? <Loader2 className="animate-spin" size={18} /> : 'Hapus'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                        {/* Show All Data Toggle */}
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={showAllData}
-                                    onChange={(e) => setShowAllData(e.target.checked)}
-                                    color="primary"
+            {/* Modal: Password */}
+            {openPasswordDialog && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-500">
+                            <Lock size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">Verifikasi Diperlukan</h3>
+                        <p className="text-sm text-slate-500 mb-6">Masukkan password admin untuk melanjutkan.</p>
+                        <form onSubmit={handlePasswordSubmit}>
+                            <input 
+                                type="password" 
+                                autoFocus
+                                placeholder="Password"
+                                value={passwordInput}
+                                onChange={(e) => setPasswordInput(e.target.value)}
+                                className="w-full px-4 py-3 text-center text-lg tracking-widest rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none mb-6"
+                            />
+                            <div className="flex gap-3">
+                                <button type="button" onClick={() => setOpenPasswordDialog(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors">Batal</button>
+                                <button type="submit" disabled={loadingPassword} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">{loadingPassword ? <Loader2 size={18} className="animate-spin" /> : 'Lanjut'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Payment (Quick Pay) */}
+            {modalPayment && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                            <h3 className="font-bold text-xl flex items-center gap-2"><CreditCard /> Pembayaran</h3>
+                            <button onClick={() => setModalPayment(false)}><X /></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="text-center">
+                                <p className="text-sm text-slate-500 mb-1">Total Tagihan</p>
+                                <h2 className="text-4xl font-black text-slate-900">{formatRupiah(paymentDetail.price)}</h2>
+                            </div>
+                            
+                            <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl cursor-pointer border-2 border-transparent has-[:checked]:border-indigo-600 transition-all">
+                                <input 
+                                    type="checkbox" 
+                                    checked={isExactChange} 
+                                    onChange={(e) => setIsExactChange(e.target.checked)}
+                                    className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500"
                                 />
-                            }
-                            label="Tampilkan semua kategori"
-                        />
+                                <span className="font-bold text-slate-700">Uang Pas</span>
+                            </label>
 
-                        {/* Active Filters Summary */}
-                        <Paper
-                            elevation={1}
-                            sx={{
-                                p: 2,
-                                bgcolor: 'grey.50',
-                                border: 1,
-                                borderColor: 'primary.light'
-                            }}
-                        >
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                Filter Aktif:
-                            </Typography>
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                {settingFilter.category?.label && (
-                                    <Chip
-                                        label={`Kategori: ${settingFilter.category.label}`}
-                                        size="small"
-                                        color="primary"
-                                        variant="outlined"
+                            {!isExactChange && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700">Uang Diterima</label>
+                                    <input 
+                                        type="number"
+                                        placeholder="Masukkan jumlah..."
+                                        value={actualPricePay}
+                                        onChange={(e) => setActualPricePay(e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 transition-all text-xl font-bold"
                                     />
-                                )}
-                                {settingFilter.isPayment !== null && (
-                                    <Chip
-                                        label={`Status: ${settingFilter.isPayment ? 'Sudah Bayar' : 'Belum Bayar'}`}
-                                        size="small"
-                                        color={settingFilter.isPayment ? "success" : "warning"}
-                                        variant="outlined"
-                                    />
-                                )}
-                                {showAllData && (
-                                    <Chip
-                                        label="Semua Kategori"
-                                        size="small"
-                                        color="secondary"
-                                        variant="outlined"
-                                    />
-                                )}
-                                {!settingFilter.category?.label && settingFilter.isPayment === null && !showAllData && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        Tidak ada filter aktif
-                                    </Typography>
-                                )}
-                            </Stack>
-                        </Paper>
+                                </div>
+                            )}
 
-                        {/* Results Count */}
-                        <Alert severity="info" icon={false}>
-                            <Typography variant="body2">
-                                Menampilkan <strong>{filteredOrder.length}</strong> dari <strong>{dataOrder.length}</strong> total data
-                            </Typography>
-                        </Alert>
-                    </Stack>
-                </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button
-                        onClick={() => {
-                            setSettingFilter({
-                                category: { label: "", value: "", id: "", name: "", price: "" },
-                                isPayment: null
-                            });
-                            setShowAllData(false);
-                        }}
-                        variant="outlined"
-                        color="error"
-                        startIcon={<Close />}
-                    >
-                        Reset Filter
-                    </Button>
-                    <Button
-                        onClick={() => setModalFilter(false)}
-                        variant="contained"
-                        startIcon={<CheckCircle />}
-                    >
-                        Terapkan Filter
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Enhanced PAYMENT DIALOG */}
-            <Dialog
-                open={modalPayment}
-                onClose={() => !uploading && setModalPayment(false)}
-                fullWidth
-                maxWidth="sm"
-                PaperProps={{
-                    elevation: 8,
-                }}
-            >
-                <DialogTitle sx={{
-                    bgcolor: 'primary.main',
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                }}>
-                    <Typography variant="h6" fontWeight={600}>
-                        <Paid sx={{ verticalAlign: 'middle', mr: 1 }} />
-                        Pembayaran Pesanan
-                    </Typography>
-                    <IconButton
-                        onClick={() => !uploading && setModalPayment(false)}
-                        sx={{ color: 'white' }}
-                    >
-                        <Close />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent dividers sx={{ p: 3 }}>
-                    <Stack spacing={3}>
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={isExactChange}
-                                    onChange={() => setIsExactChange((v) => !v)}
-                                    color="primary"
-                                />
-                            }
-                            label="Pembayaran Pas (Tidak Perlu Kembalian)"
-                        />
-
-                        <Paper elevation={1} sx={{ p: 2, bgcolor: 'grey.50' }}>
-                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                Total Yang Harus Dibayarkan
-                            </Typography>
-                            <Typography variant="h4" color="primary.main" fontWeight={700} fontSize={{ xs: "1.5rem", sm: "2rem" }}>
-                                {formatRupiah(detailData.price)}
-                            </Typography>
-                        </Paper>
-
-                        {!isExactChange && (
-                            <Box>
-                                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                    Total Uang Yang Diterima
-                                </Typography>
-                                <TextField
-                                    value={actualPrice}
-                                    onChange={(e) => setActualPrice(e.target.value)}
-                                    placeholder="Masukkan jumlah uang yang diterima"
-                                    inputProps={{ inputMode: "numeric" }}
-                                    fullWidth
-                                    variant="outlined"
-                                    size="medium"
-                                />
-                            </Box>
-                        )}
-                    </Stack>
-                </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button
-                        onClick={handleResetPayment}
-                        disabled={uploading}
-                        variant="outlined"
-                    >
-                        Batal
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleUpdateOrder}
-                        disabled={uploading}
-                        startIcon={uploading ? <Pending /> : <CheckCircle />}
-                    >
-                        {uploading ? "Memproses..." : "Konfirmasi Pembayaran"}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* CREATE / UPDATE DIALOG */}
-            <Dialog
-                open={modalCreate}
-                onClose={() => {
-                    if (modalUpdate) {
-                        handleResetUpload();
-                        setModalUpdate(false);
-                    } else {
-                        setModalCreate(false);
-                    }
-                }}
-                fullWidth
-                maxWidth="sm"
-                PaperProps={{
-                    elevation: 8,
-                }}
-            >
-                <DialogTitle sx={{
-                    bgcolor: 'primary.main',
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                }}>
-                    <Typography variant="h6" fontWeight={600}>
-                        <Add sx={{ verticalAlign: 'middle', mr: 1 }} />
-                        {modalUpdate ? "Edit Pesanan" : "Tambah Pesanan Baru"}
-                    </Typography>
-                    <IconButton
-                        onClick={() => {
-                            if (modalUpdate) {
-                                handleResetUpload();
-                                setModalUpdate(false);
-                            } else {
-                                setModalCreate(false);
-                            }
-                        }}
-                        sx={{ color: 'white' }}
-                    >
-                        <Close />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent dividers sx={{ p: 3 }}>
-                    <Stack spacing={3}>
-                        <FormControl fullWidth>
-                            <InputLabel id="user-label">Nama Pemesan</InputLabel>
-                            <Select
-                                labelId="user-label"
-                                label="Nama Pemesan"
-                                value={dataUpload.user?.label || ""}
-                                onChange={(e) => {
-                                    const sel = dataDropdownSensus.find(
-                                        (d) => d.value === e.target.value
-                                    );
-                                    if (!sel) return;
-                                    setDataUpload((prev) => ({
-                                        ...prev,
-                                        user: {
-                                            label: String(sel.value),
-                                            value: String(sel.value),
-                                            id: String(sel.id),
-                                        },
-                                    }));
-                                }}
-                                variant="outlined"
+                            <button 
+                                onClick={handleUpdatePayment}
+                                disabled={uploading}
+                                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all disabled:opacity-50 flex justify-center items-center gap-2"
                             >
-                                <MenuItem value="">-- Pilih Nama Pemesan --</MenuItem>
-                                {dataDropdownSensus.map((d) => (
-                                    <MenuItem key={String(d.id)} value={String(d.value)}>
-                                        {d.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
+                                {uploading ? <Loader2 className="animate-spin" /> : <ClipboardCheck />}
+                                Konfirmasi Bayar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Modal: Filter */}
+            {modalFilter && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden">
+                        <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Filter size={18} /> Filter Data</h3>
+                            <button onClick={() => setModalFilter(false)}><X /></button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Kategori</label>
+                                <select 
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium"
+                                    value={settingFilter.category.label}
+                                    onChange={(e) => {
+                                        const sel = dataDropdownCategory.find(d => d.value === e.target.value);
+                                        if (sel) setSettingFilter({...settingFilter, category: { ...sel, id: String(sel.id), label: sel.label, value: sel.label, name: String(sel.name), price: String(sel.price) }});
+                                    }}
+                                >
+                                    <option value="">Semua Kategori</option>
+                                    {dataDropdownCategory.map(c => <option key={c.id} value={c.value}>{c.label}</option>)}
+                                </select>
+                            </div>
 
-                        <FormControl fullWidth>
-                            <InputLabel id="cat2-label">Kategori Pesanan</InputLabel>
-                            <Select
-                                labelId="cat2-label"
-                                label="Kategori Pesanan"
-                                value={dataUpload.category?.label || ""}
-                                onChange={(e) => {
-                                    const sel = dataDropdownCategory.find(
-                                        (d) => `${d.name} ${d.year}` === e.target.value
-                                    );
-                                    if (!sel) return;
-                                    setDataUpload((prev) => ({
-                                        ...prev,
-                                        category: {
-                                            ...prev.category,
-                                            id: String(sel.id),
-                                            name: String(sel.name || ""),
-                                            label: `${sel.name} ${sel.year}`,
-                                            value: `${sel.name} ${sel.year}`,
-                                            price: String(sel.price ?? ""),
-                                        },
-                                    }));
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Status Bayar</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { label: 'Semua', val: null },
+                                        { label: 'Lunas', val: true },
+                                        { label: 'Belum', val: false }
+                                    ].map(s => (
+                                        <button 
+                                            key={s.label}
+                                            onClick={() => setSettingFilter({...settingFilter, isPayment: s.val})}
+                                            className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all ${settingFilter.isPayment === s.val ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                        >
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
+                            <button 
+                                onClick={() => { 
+                                    setSettingFilter({ category: { label: "", value: "", id: "", name: "", price: "" }, isPayment: null });
+                                    setShowAllData(false);
                                 }}
-                                variant="outlined"
+                                className="px-4 py-2 text-rose-600 font-bold hover:bg-rose-50 rounded-xl transition-all"
                             >
-                                <MenuItem value="">-- Pilih Kategori Pesanan --</MenuItem>
-                                {dataDropdownCategory.map((d) => (
-                                    <MenuItem key={String(d.id)} value={`${d.name} ${d.year}`}>
-                                        {d.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-
-                        <TextField
-                            label="Jumlah Pesanan"
-                            value={dataUpload.totalOrder}
-                            onChange={(e) =>
-                                setDataUpload((prev) => ({ ...prev, totalOrder: e.target.value }))
-                            }
-                            inputProps={{ inputMode: "numeric" }}
-                            placeholder="Masukkan jumlah pesanan"
-                            fullWidth
-                            variant="outlined"
-                            helperText="Jumlah dalam satuan pcs"
-                        />
-
-                        <TextField
-                            label="Catatan Pesanan (Opsional)"
-                            value={dataUpload.note}
-                            onChange={(e) =>
-                                setDataUpload((prev) => ({ ...prev, note: e.target.value }))
-                            }
-                            placeholder="Masukkan catatan tambahan..."
-                            fullWidth
-                            multiline
-                            minRows={3}
-                            variant="outlined"
-                        />
-                    </Stack>
-                </DialogContent>
-                <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button
-                        onClick={handleResetUpload}
-                        disabled={uploading}
-                        variant="outlined"
-                    >
-                        Batal
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleCreateOrUpdateOrder}
-                        disabled={uploading}
-                        startIcon={uploading ? <Pending /> : <CheckCircle />}
-                    >
-                        {uploading ? "Menyimpan..." : (modalUpdate ? "Update" : "Simpan")}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* Enhanced BOTTOM SHEET */}
-            <Drawer
-                anchor="bottom"
-                open={sheetOpen}
-                onClose={() => setSheetOpen(false)}
-                PaperProps={{
-                    sx: {
-                        borderTopLeftRadius: 16,
-                        borderTopRightRadius: 16,
-                        maxWidth: 800,
-                        mx: 'auto',
-                        width: '100%',
-                    }
-                }}
-            >
-                <Box sx={{ p: 3 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-                        <Typography variant="h5" fontWeight={700}>
-                            📊 Ringkasan Lengkap
-                        </Typography>
-                        <IconButton onClick={() => setSheetOpen(false)}>
-                            <Close />
-                        </IconButton>
-                    </Stack>
-
-                    <Grid container spacing={3}>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Paper elevation={2} sx={{ p: 3 }}>
-                                <Typography variant="h6" gutterBottom fontWeight={600}>
-                                    Statistik Pesanan
-                                </Typography>
-                                <Stack spacing={2}>
-                                    <Row label="Total Pesanan" value={String(stats.totalItems)} />
-                                    <Row label="Sudah Bayar" value={String(stats.paidOrders)} />
-                                    <Row label="Belum Bayar" value={String(stats.unpaidOrders)} />
-                                    <Row label="Tingkat Kelunasan" value={`${stats.paymentRate.toFixed(1)}%`} />
-                                </Stack>
-                            </Paper>
-                        </Grid>
-                        <Grid size={{ xs: 12, sm: 6 }}>
-                            <Paper elevation={2} sx={{ p: 3 }}>
-                                <Typography variant="h6" gutterBottom fontWeight={600}>
-                                    Ringkasan Keuangan
-                                </Typography>
-                                <Stack spacing={2}>
-                                    <Row label="Total Nilai Pesanan" value={formatRupiah(stats.totalValue)} />
-                                    <Row label="Total Uang Diterima" value={formatRupiah(stats.totalReceived)} />
-                                    <Row
-                                        label="Selisih"
-                                        value={formatRupiah(stats.totalValue - stats.totalReceived)}
-                                        color={stats.totalValue - stats.totalReceived > 0 ? "error" : "success"}
-                                    />
-                                </Stack>
-                            </Paper>
-                        </Grid>
-                    </Grid>
-
-                    <Box sx={{ mt: 3, textAlign: 'center' }}>
-                        <Button
-                            variant="outlined"
-                            onClick={() => setSheetOpen(false)}
-                            startIcon={<Close />}
-                        >
-                            Tutup Ringkasan
-                        </Button>
-                    </Box>
-                </Box>
-            </Drawer>
-        </Box>
+                                Reset
+                            </button>
+                            <button onClick={() => { fetchDataOrder(); setModalFilter(false); }} className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all">Terapkan</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
-// Enhanced Row for sheet
-const Row: React.FC<{ label: string; value: string; color?: "primary" | "error" | "success" }> = ({ label, value, color = "primary" }) => (
-    <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ py: 1.5, borderBottom: "1px solid", borderColor: "divider" }}
-    >
-        <Typography variant="body1" color="text.secondary">{label}</Typography>
-        <Typography variant="body1" fontWeight={700} color={`${color}.main`}>
-            {value}
-        </Typography>
-    </Stack>
-);
+// Icon placeholders used: Save
+const Save = ({ size }: { size: number }) => <CheckCircle2 size={size} />;
 
 export default OrderListPage;
