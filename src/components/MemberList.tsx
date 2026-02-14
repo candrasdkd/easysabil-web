@@ -30,7 +30,7 @@ import { type Member } from '../types/Member';
 dayjs.locale('id');
 
 const INITIAL_PAGE_SIZE = 15;
-const STORAGE_KEY = 'MEMBER_LIST_FILTERS_V1'; // Key untuk penyimpanan
+const STORAGE_KEY = 'MEMBER_LIST_FILTERS_V1';
 
 type Props = {
     loading?: boolean;
@@ -42,8 +42,6 @@ type Family = {
     id: number;
     name: string;
 };
-
-// --- Helper Components ---
 
 const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' | 'red' | 'gray' | 'blue' }) => {
     const colors = {
@@ -62,7 +60,7 @@ const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' 
 export default function MemberList({ loading, members, refreshMembers }: Props) {
     const navigate = useNavigate();
 
-    // --- Helper untuk Load State Tersimpan ---
+    // --- Helper Load State ---
     const getSavedState = <T,>(key: string, defaultValue: T): T => {
         try {
             const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -74,9 +72,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         }
     };
 
-    // --- State (Diinisialisasi dengan data tersimpan) ---
-    
-    // Search & Page
+    // --- State ---
     const [searchText, setSearchText] = useState(() => getSavedState('searchText', ''));
     const [currentPage, setCurrentPage] = useState(() => getSavedState('currentPage', 1));
     const [pageSize, setPageSize] = useState(() => getSavedState('pageSize', INITIAL_PAGE_SIZE));
@@ -89,12 +85,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     
     // Family Filter
     const [selectedFamily, setSelectedFamily] = useState<string>(() => getSavedState('selectedFamily', ''));
-    const [familySearchKeyword, setFamilySearchKeyword] = useState(() => getSavedState('familySearchKeyword', '')); // Biar nama di input search gak ilang
+    const [familySearchKeyword, setFamilySearchKeyword] = useState(() => getSavedState('familySearchKeyword', ''));
 
-    // Data Fetching State
+    // Data State
     const [listFamily, setListFamily] = useState<Family[]>([]);
     
-    // UI Toggles (Gak perlu disimpan)
+    // UI Toggles
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
 
@@ -108,7 +104,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: keyof Member | 'actions'; direction: 'asc' | 'desc' }>({ key: 'order', direction: 'asc' });
 
-    // --- EFFECT: Simpan State setiap ada perubahan ---
+    // --- Effects ---
     useEffect(() => {
         const filtersToSave = {
             searchText,
@@ -124,8 +120,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
     }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword]);
 
-
-    // --- Logic Fetch Family ---
     const fetchFamilys = async () => {
         const { data, error } = await supabase
             .from('list_family')
@@ -142,7 +136,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     }, []);
 
     // --- Logic Helper ---
-
     const highlightMatch = (text: string | number | null, search: string) => {
         const source = String(text ?? '');
         if (!search) return source;
@@ -161,18 +154,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         );
     };
 
-    // 2. Filter & Sort Logic (Memoized)
+    // Filter Logic
     const processedMembers = useMemo(() => {
         let filtered = members.filter(m => !m.is_educate); 
 
-        // Status Filter
         if (memberStatus === 'Aktif') filtered = filtered.filter(m => m.is_active);
         if (memberStatus === 'Tidak Aktif') filtered = filtered.filter(m => !m.is_active);
-
-        // Filter Keluarga
-        if (selectedFamily) {
-            filtered = filtered.filter(m => m.family_name === selectedFamily);
-        }
+        if (selectedFamily) filtered = filtered.filter(m => m.family_name === selectedFamily);
 
         if (selectedGender.length) filtered = filtered.filter(m => selectedGender.includes(m.gender));
         if (selectedLevel.length) filtered = filtered.filter(m => selectedLevel.includes(m.level));
@@ -215,7 +203,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         return filtered;
     }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily]);
 
-    // 3. Pagination Logic
     const paginatedMembers = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
         return processedMembers.slice(start, start + pageSize);
@@ -223,35 +210,21 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     const totalPages = Math.ceil(processedMembers.length / pageSize);
 
-    // Reset pagination ONLY when major filters change (optional behavior)
-    // Disini saya comment agar pagination juga tersimpan posisinya jika user refresh.
-    // Jika ingin reset page tiap search, uncomment useEffect di bawah.
-    /*
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, selectedFamily]);
-    */
-
-    // --- Filtered Family List for Search ---
     const filteredFamilyOptions = listFamily.filter(f => 
         f.name.toLowerCase().includes(familySearchKeyword.toLowerCase())
     );
 
-    // --- Handlers ---
+    // --- Actions ---
 
-    // RESET FILTER HANDLER
     const handleResetFilter = () => {
-        // Reset State
         setSelectedGender([]);
         setSelectedLevel([]);
         setSelectedMarriageStatus([]);
         setMemberStatus('Aktif');
         setSelectedFamily('');
         setFamilySearchKeyword('');
-        setSearchText(''); // Reset search text utama juga biar bersih
+        setSearchText('');
         setCurrentPage(1);
-        
-        // Clear Storage
         sessionStorage.removeItem(STORAGE_KEY);
     };
 
@@ -302,26 +275,91 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         });
     };
 
+    // --- NEW: ADVANCED EXCEL EXPORT (GROUPED BY FAMILY) ---
     const handleExportExcel = () => {
-        const data = processedMembers.map(row => ({
-            'Nama/Alias': row.alias || row.name, 
-            'Nama Asli': row.name,
-            'Status': row.is_active ? 'Aktif' : 'Non-Aktif',
-            'Jenjang': row.level,
-            'Gender': row.gender,
-            'Umur': row.age,
-            'Tgl Lahir': row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-',
-            'Status Nikah': row.marriage_status,
-            'Keluarga': row.family_name,
-            'Urutan': row.order
-        }));
+        const toastId = toast.loading('Menyiapkan file Excel...');
 
-        const ws = XLSX.utils.json_to_sheet(data);
+        // 1. Grouping Data berdasarkan Nama Keluarga
+        const groupedData: Record<string, Member[]> = {};
+        
+        // Kita copy dulu dan sort berdasarkan Nama Keluarga biar rapi urutan groupnya
+        const sortedForExcel = [...processedMembers].sort((a, b) => 
+            (a.family_name || 'ZZZ').localeCompare(b.family_name || 'ZZZ')
+        );
+
+        sortedForExcel.forEach((member) => {
+            const familyName = member.family_name || 'Tanpa Keluarga';
+            if (!groupedData[familyName]) {
+                groupedData[familyName] = [];
+            }
+            groupedData[familyName].push(member);
+        });
+
+        // 2. Membentuk Struktur Baris Excel (Array of Arrays)
+        const excelRows: any[][] = [];
+        
+        // Header Kolom Standar
+        const tableHeaders = [
+            'No', 'Nama Panggilan', 'Nama Asli', 'Jenjang', 
+            'Gender', 'Umur', 'Tgl Lahir', 'Status Nikah', 'Status Keaktifan'
+        ];
+
+        // Loop setiap keluarga
+        Object.keys(groupedData).forEach((family) => {
+            // A. Judul Keluarga (Huruf Besar)
+            excelRows.push([`KELUARGA: ${family.toUpperCase()}`]);
+            
+            // B. Header Tabel untuk grup ini
+            excelRows.push(tableHeaders);
+
+            // C. Baris Data Anggota Keluarga
+            // Sort anggota berdasarkan 'order' atau 'name' di dalam keluarga
+            const familyMembers = groupedData[family].sort((a, b) => (a.order || 999) - (b.order || 999));
+            
+            familyMembers.forEach((row, index) => {
+                excelRows.push([
+                    index + 1, // Nomor urut per keluarga
+                    row.alias || row.name,
+                    row.name,
+                    row.level,
+                    row.gender,
+                    row.age ? `${row.age} Th` : '-',
+                    row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-',
+                    row.marriage_status,
+                    row.is_active ? 'Aktif' : 'Non-Aktif'
+                ]);
+            });
+
+            // D. Baris Kosong sebagai pemisah antar keluarga
+            excelRows.push(['']); 
+            excelRows.push(['']); 
+        });
+
+        // 3. Buat Worksheet dari Array of Arrays
+        const ws = XLSX.utils.aoa_to_sheet(excelRows);
+
+        // 4. Atur lebar kolom (opsional, biar agak rapi saat dibuka)
+        ws['!cols'] = [
+            { wch: 5 },  // No
+            { wch: 20 }, // Nama Panggilan
+            { wch: 30 }, // Nama Asli
+            { wch: 10 }, // Jenjang
+            { wch: 15 }, // Gender
+            { wch: 10 }, // Umur
+            { wch: 15 }, // Tgl Lahir
+            { wch: 15 }, // Status Nikah
+            { wch: 15 }, // Status
+        ];
+        
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Data Member');
+        XLSX.utils.book_append_sheet(wb, ws, 'Data Per Keluarga');
+        
+        // 5. Download File
+        const fileName = `Data_Jamaah_Grouped_${dayjs().format('DD-MM-YYYY')}.xlsx`;
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), 'Data_Jamaah.xlsx');
-        toast.success('File Excel berhasil diunduh');
+        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
+        
+        toast.success('File Excel berhasil diunduh', { id: toastId });
     };
 
     const SortIcon = ({ columnKey }: { columnKey: keyof Member }) => {
@@ -367,7 +405,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         value={searchText}
                         onChange={(e) => {
                             setSearchText(e.target.value);
-                            setCurrentPage(1); // Tetap reset page kalau search berubah
+                            setCurrentPage(1); 
                         }}
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
                     />
@@ -388,7 +426,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         onClick={handleExportExcel}
                         className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-all flex-1 md:flex-none"
                     >
-                        <Download size={18} /> Export
+                        <Download size={18} /> Excel Grouped
                     </button>
                 </div>
             </div>
@@ -539,7 +577,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
                         <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
                             
-                            {/* 1. Status Keaktifan (Disamakan bentuknya) */}
+                            {/* 1. Status Keaktifan */}
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status Keaktifan</label>
                                 <div className="relative">
@@ -560,7 +598,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Kepala Keluarga</label>
                                 <div className="relative">
-                                    {/* Overlay transparan untuk close dropdown saat klik luar */}
                                     {isFamilyDropdownOpen && (
                                         <div 
                                             className="fixed inset-0 z-10" 
@@ -568,7 +605,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                         />
                                     )}
 
-                                    {/* Input Field */}
                                     <div className="relative z-20">
                                         <input 
                                             type="text"
@@ -581,7 +617,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                             onFocus={() => setIsFamilyDropdownOpen(true)}
                                             className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-slate-700 placeholder:text-slate-400"
                                         />
-                                        {/* Icon: X kalau ada isi, Chevron kalau kosong */}
                                         {selectedFamily || familySearchKeyword ? (
                                             <button 
                                                 onClick={() => {
@@ -597,7 +632,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                         )}
                                     </div>
 
-                                    {/* Dropdown List */}
                                     {isFamilyDropdownOpen && (
                                         <div className="absolute z-30 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
                                             <div 
