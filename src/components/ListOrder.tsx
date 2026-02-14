@@ -8,7 +8,7 @@ import {
     Trash2, X, TrendingUp, AlertCircle,
     Loader2, ChevronDown, ListOrdered, ClipboardCheck,
     Banknote, Wallet, ArrowRightLeft, AlertTriangle,
-    PieChart, Lock // Tambah icon Lock
+    PieChart, Lock 
 } from 'lucide-react';
 
 // =====================
@@ -211,9 +211,7 @@ const OrderListPage: React.FC = () => {
 
     // --- Action & Auth Handlers ---
 
-    // 1. Centralized Action Handler
     const handleAction = (type: 'create' | 'edit' | 'delete', payload?: any) => {
-        // Cek apakah sesi masih valid
         const stored = localStorage.getItem(AUTH_KEY);
         const isValid = stored && (Date.now() - parseInt(stored, 10) < SESSION_DURATION);
 
@@ -279,12 +277,10 @@ const OrderListPage: React.FC = () => {
         alert("Sesi dikunci.");
     };
 
-    // ------------------------------------
-
     // --- Auto Calculate Price for Form ---
     useEffect(() => {
         if (dataUpload.isPayment && dataUpload.totalOrder && dataUpload.category.price) {
-            if(dataUpload.actualPrice === "") {
+            if(dataUpload.actualPrice === "" || dataUpload.actualPrice === "0") {
                 const total = parseInt(dataUpload.totalOrder) * parseInt(dataUpload.category.price);
                 if (!isNaN(total)) {
                     setDataUpload(prev => ({ ...prev, actualPrice: String(total) }));
@@ -292,7 +288,6 @@ const OrderListPage: React.FC = () => {
             }
         }
     }, [dataUpload.isPayment, dataUpload.totalOrder, dataUpload.category.price]);
-
 
     const handleUpdatePayment = async () => {
         if (!isExactChange && !actualPricePay) return alert("Masukkan jumlah uang");
@@ -304,7 +299,7 @@ const OrderListPage: React.FC = () => {
                     actual_price: numericPrice, 
                     is_payment: true,
                     payment_method: 'Cash', 
-                    money_holder: 'Fachih' // Default for quick pay
+                    money_holder: 'Fachih' 
                 })
                 .eq("id", paymentDetail.id);
 
@@ -319,12 +314,33 @@ const OrderListPage: React.FC = () => {
         }
     };
 
+    // ==========================================
+    // VALIDASI & SAVE ORDER
+    // ==========================================
     const handleSaveOrder = async () => {
-        if (!dataUpload.user.id || !dataUpload.category.id || !dataUpload.totalOrder) return alert("Lengkapi data pemesan & kategori");
+        // 1. Validasi Data Dasar
+        if (!dataUpload.user.id || !dataUpload.category.id || !dataUpload.totalOrder) {
+            return alert("⚠️ Mohon lengkapi: Nama Pemesan, Kategori, dan Jumlah Pesanan.");
+        }
         
+        // 2. Validasi Pembayaran (JIKA DICENTANG LUNAS)
         if (dataUpload.isPayment) {
-            if (!dataUpload.moneyHolder) return alert("Pilih siapa pemegang uang");
-            if (!dataUpload.actualPrice) return alert("Masukkan nominal uang");
+            // Validasi Pemegang Uang
+            if (!dataUpload.moneyHolder || dataUpload.moneyHolder.trim() === "") {
+                return alert("⚠️ Status LUNAS dipilih. Harap pilih siapa 'Pemegang Uang'.");
+            }
+
+            // Validasi Metode Pembayaran
+            if (!dataUpload.paymentMethod || dataUpload.paymentMethod.trim() === "") {
+                return alert("⚠️ Status LUNAS dipilih. Harap pilih 'Metode Pembayaran'.");
+            }
+
+            // Validasi Nominal Uang
+            // Hilangkan karakter non-digit untuk pengecekan
+            const cleanPrice = dataUpload.actualPrice ? String(dataUpload.actualPrice).replace(/[^0-9]/g, "") : "0";
+            if (!cleanPrice || parseInt(cleanPrice, 10) <= 0) {
+                return alert("⚠️ Status LUNAS dipilih. Harap masukkan 'Nominal Uang' yang diterima (tidak boleh 0).");
+            }
         }
 
         setUploading(true);
@@ -338,9 +354,10 @@ const OrderListPage: React.FC = () => {
                 unit_price: parseInt(String(dataUpload.category.price)),
                 note: dataUpload.note,
                 is_payment: dataUpload.isPayment,
+                // Jika lunas pakai value dari form, jika tidak lunas set null/0
                 money_holder: dataUpload.isPayment ? dataUpload.moneyHolder : null,
                 payment_method: dataUpload.isPayment ? dataUpload.paymentMethod : null,
-                actual_price: dataUpload.isPayment ? parseInt(dataUpload.actualPrice.replace(/[^0-9]/g, ""), 10) : 0
+                actual_price: dataUpload.isPayment ? parseInt(String(dataUpload.actualPrice).replace(/[^0-9]/g, ""), 10) : 0
             };
 
             const query = modalUpdate 
@@ -392,21 +409,18 @@ const OrderListPage: React.FC = () => {
         setMemberSearch("");
     }
 
-const copyReport = () => {
+    const copyReport = () => {
         const currentDate = dayjs().format("DD MMM YYYY, HH:mm");
         const categoryLabel = settingFilter.category.label || "SEMUA KATEGORI";
 
-        // 1. Header Laporan
         let text = `*📦 LAPORAN PESANAN*\n`;
         text += `🏷️ Kategori: ${categoryLabel}\n`;
         text += `🗓️ Update: ${currentDate}\n`;
         text += `=========================\n`;
 
-        // 2. Pisahkan Data (Belum Bayar vs Sudah Bayar)
         const unpaid = filteredOrder.filter(item => !item.is_payment);
         const paid = filteredOrder.filter(item => item.is_payment);
 
-        // 3. Bagian BELUM LUNAS (Prioritas ditampilkan di atas)
         if (unpaid.length > 0) {
             text += `\n*⏳ BELUM LUNAS (${unpaid.length} Orang)*\n`;
             unpaid.forEach((item, idx) => {
@@ -417,17 +431,13 @@ const copyReport = () => {
             });
         }
 
-        // 4. Bagian SUDAH LUNAS
         if (paid.length > 0) {
             text += `\n*✅ SUDAH LUNAS (${paid.length} Orang)*\n`;
             paid.forEach((item, idx) => {
                 text += `${idx + 1}. ${item.user_name} (${item.total_order} pcs)\n`;
-                // Opsional: Tampilkan detail pembayaran jika perlu
-                // text += `   └ Diterima: ${formatRupiah(item.actual_price)} via ${item.payment_method}\n`; 
             });
         }
 
-        // 5. Footer Ringkasan Keuangan
         text += `\n=========================\n`;
         text += `*📊 RINGKASAN KEUANGAN*\n`;
         text += `📦 Total Barang: ${stats.totalItems} pcs\n`;
@@ -441,7 +451,6 @@ const copyReport = () => {
             text += `✨ *STATUS: LUNAS SEMUA* ✨\n`;
         }
 
-        // 6. Copy ke Clipboard
         navigator.clipboard.writeText(text).then(() => {
             alert("Laporan berhasil disalin! Siap ditempel ke WhatsApp.");
         }).catch((err) => {
@@ -819,7 +828,7 @@ const copyReport = () => {
                                 </div>
                             </div>
 
-                            {/* --- PAYMENT TOGGLE SECTION (MOVED UP) --- */}
+                            {/* --- PAYMENT TOGGLE SECTION --- */}
                             <div className="pt-2">
                                 <label className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer border-2 transition-all ${dataUpload.isPayment ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-transparent hover:border-slate-200'}`}>
                                     <div className="flex items-center gap-3">
@@ -839,7 +848,7 @@ const copyReport = () => {
                                     <div className="mt-4 space-y-4 animate-in slide-in-from-top-2 fade-in">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <label className="text-xs font-bold text-slate-500 uppercase">Pemegang Uang</label>
+                                                <label className="text-xs font-bold text-slate-500 uppercase">Pemegang Uang <span className="text-red-500">*</span></label>
                                                 <div className="relative">
                                                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                                     <select 
@@ -853,7 +862,7 @@ const copyReport = () => {
                                                 </div>
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-xs font-bold text-slate-500 uppercase">Metode</label>
+                                                <label className="text-xs font-bold text-slate-500 uppercase">Metode <span className="text-red-500">*</span></label>
                                                 <div className="relative">
                                                     <ArrowRightLeft className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                                     <select 
@@ -867,7 +876,7 @@ const copyReport = () => {
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Nominal (Rp)</label>
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Nominal (Rp) <span className="text-red-500">*</span></label>
                                             <div className="relative">
                                                 <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" size={18} />
                                                 <input 
