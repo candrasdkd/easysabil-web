@@ -50,11 +50,6 @@ const createEmptyMetrics = (): SensusMetrics => ({
     duda: [], janda: []
 });
 
-const calculateAge = (dob: string | null) => {
-    if (!dob) return 0;
-    return dayjs().diff(dayjs(dob), 'year');
-};
-
 const processSensusData = (members: Member[]) => {
     const g1 = createEmptyMetrics();
     const stats = {
@@ -104,7 +99,6 @@ const processSensusData = (members: Member[]) => {
             }
         }
     });
-console.log(g1);
 
     const totalL = g1.balita_l.length + g1.paud_l.length + g1.caberawit_l.length + g1.praremaja_l.length + g1.remaja_l.length + g1.pranikah_l.length + g1.menikah_l.length + g1.duda.length;
     const totalP = g1.balita_p.length + g1.paud_p.length + g1.caberawit_p.length + g1.praremaja_p.length + g1.remaja_p.length + g1.pranikah_p.length + g1.menikah_p.length + g1.janda.length;
@@ -113,7 +107,7 @@ console.log(g1);
 };
 
 // --- KOMPONEN UTAMA ---
-const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_, ref) => {
+const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
     const printRef = useRef<HTMLDivElement>(null);
     const [members, setMembers] = useState<Member[]>([]);
     const [loading, setLoading] = useState(true);
@@ -212,15 +206,6 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_, ref) => {
             console.error('downloadDataBinaan error', error);
         }
     };
-
-    type ProcessedDuafa = {
-        totalJiwaKelompok1: number; totalKeluargaKelompok1: number;
-        totalJiwaKelompok2: number; totalKeluargaKelompok2: number;
-        totalJiwaKelompok3: number; totalKeluargaKelompok3: number;
-        totalJiwaKelompok4: number; totalKeluargaKelompok4: number;
-        totalJiwaKelompok5: number; totalKeluargaKelompok5: number;
-    };
-
     const downloadDataDuafa = async () => {
         try {
             const params = "DATA DUAFA DESA";
@@ -359,7 +344,7 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_, ref) => {
     }, []);
 
     // For rendering: if groupedData exists use it; otherwise fallback to supabase-processed g1
-    const { g1, stats, totalL, totalP, totalAll } = useMemo(() => processSensusData(members), [members]);
+    const { g1, stats, totalAll } = useMemo(() => processSensusData(members), [members]);
 
     // --- STYLING (WARNA TAILWIND) ---
     const colors = {
