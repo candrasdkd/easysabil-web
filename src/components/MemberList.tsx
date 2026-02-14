@@ -5,7 +5,6 @@ import 'dayjs/locale/id';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { supabase } from '../supabase/client';
-// 1. Import Toast
 import toast, { Toaster } from 'react-hot-toast';
 import { 
     Search, 
@@ -22,7 +21,8 @@ import {
     ArrowUp,
     ArrowDown,
     X,
-    Loader2
+    Loader2,
+    Check
 } from 'lucide-react';
 
 import { type Member } from '../types/Member';
@@ -30,11 +30,17 @@ import { type Member } from '../types/Member';
 dayjs.locale('id');
 
 const INITIAL_PAGE_SIZE = 15;
+const STORAGE_KEY = 'MEMBER_LIST_FILTERS_V1'; // Key untuk penyimpanan
 
 type Props = {
     loading?: boolean;
     members: Member[];
     refreshMembers: () => void;
+};
+
+type Family = {
+    id: number;
+    name: string;
 };
 
 // --- Helper Components ---
@@ -56,14 +62,40 @@ const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' 
 export default function MemberList({ loading, members, refreshMembers }: Props) {
     const navigate = useNavigate();
 
-    // --- State ---
-    const [searchText, setSearchText] = useState('');
+    // --- Helper untuk Load State Tersimpan ---
+    const getSavedState = <T,>(key: string, defaultValue: T): T => {
+        try {
+            const saved = sessionStorage.getItem(STORAGE_KEY);
+            if (!saved) return defaultValue;
+            const parsed = JSON.parse(saved);
+            return parsed[key] !== undefined ? parsed[key] : defaultValue;
+        } catch (e) {
+            return defaultValue;
+        }
+    };
+
+    // --- State (Diinisialisasi dengan data tersimpan) ---
     
+    // Search & Page
+    const [searchText, setSearchText] = useState(() => getSavedState('searchText', ''));
+    const [currentPage, setCurrentPage] = useState(() => getSavedState('currentPage', 1));
+    const [pageSize, setPageSize] = useState(() => getSavedState('pageSize', INITIAL_PAGE_SIZE));
+
     // Filters
-    const [selectedGender, setSelectedGender] = useState<string[]>([]);
-    const [selectedLevel, setSelectedLevel] = useState<string[]>([]);
-    const [selectedMarriageStatus, setSelectedMarriageStatus] = useState<string[]>([]);
-    const [memberStatus, setMemberStatus] = useState<'Aktif' | 'Tidak Aktif' | 'Semua'>('Aktif');
+    const [selectedGender, setSelectedGender] = useState<string[]>(() => getSavedState('selectedGender', []));
+    const [selectedLevel, setSelectedLevel] = useState<string[]>(() => getSavedState('selectedLevel', []));
+    const [selectedMarriageStatus, setSelectedMarriageStatus] = useState<string[]>(() => getSavedState('selectedMarriageStatus', []));
+    const [memberStatus, setMemberStatus] = useState<'Aktif' | 'Tidak Aktif' | 'Semua'>(() => getSavedState('memberStatus', 'Aktif'));
+    
+    // Family Filter
+    const [selectedFamily, setSelectedFamily] = useState<string>(() => getSavedState('selectedFamily', ''));
+    const [familySearchKeyword, setFamilySearchKeyword] = useState(() => getSavedState('familySearchKeyword', '')); // Biar nama di input search gak ilang
+
+    // Data Fetching State
+    const [listFamily, setListFamily] = useState<Family[]>([]);
+    
+    // UI Toggles (Gak perlu disimpan)
+    const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
 
     // Password & Actions
@@ -73,14 +105,44 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [requiredPassword, setRequiredPassword] = useState<string | null>(null);
     const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-    // Pagination & Sorting
-    const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(INITIAL_PAGE_SIZE);
+    // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: keyof Member | 'actions'; direction: 'asc' | 'desc' }>({ key: 'order', direction: 'asc' });
 
-    // --- Logic ---
+    // --- EFFECT: Simpan State setiap ada perubahan ---
+    useEffect(() => {
+        const filtersToSave = {
+            searchText,
+            currentPage,
+            pageSize,
+            selectedGender,
+            selectedLevel,
+            selectedMarriageStatus,
+            memberStatus,
+            selectedFamily,
+            familySearchKeyword
+        };
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
+    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword]);
 
-    // 1. Highlight Text Logic
+
+    // --- Logic Fetch Family ---
+    const fetchFamilys = async () => {
+        const { data, error } = await supabase
+            .from('list_family')
+            .select('id, name')
+            .order('name', { ascending: true });
+            
+        if (!error && data) {
+            setListFamily(data);
+        }
+    };
+
+    useEffect(() => {
+        fetchFamilys();
+    }, []);
+
+    // --- Logic Helper ---
+
     const highlightMatch = (text: string | number | null, search: string) => {
         const source = String(text ?? '');
         if (!search) return source;
@@ -101,18 +163,21 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     // 2. Filter & Sort Logic (Memoized)
     const processedMembers = useMemo(() => {
-        let filtered = members.filter(m => !m.is_educate); // Default filter (bisa disesuaikan)
+        let filtered = members.filter(m => !m.is_educate); 
 
         // Status Filter
         if (memberStatus === 'Aktif') filtered = filtered.filter(m => m.is_active);
         if (memberStatus === 'Tidak Aktif') filtered = filtered.filter(m => !m.is_active);
 
-        // Multi Select Filters
+        // Filter Keluarga
+        if (selectedFamily) {
+            filtered = filtered.filter(m => m.family_name === selectedFamily);
+        }
+
         if (selectedGender.length) filtered = filtered.filter(m => selectedGender.includes(m.gender));
         if (selectedLevel.length) filtered = filtered.filter(m => selectedLevel.includes(m.level));
         if (selectedMarriageStatus.length) filtered = filtered.filter(m => selectedMarriageStatus.includes(m.marriage_status));
 
-        // Search Text (Updated to include Alias)
         if (searchText.trim()) {
             const q = searchText.toLowerCase();
             filtered = filtered.filter(m => 
@@ -125,7 +190,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             );
         }
 
-        // Sorting
         filtered.sort((a, b) => {
             let aVal: any = a[sortConfig.key as keyof Member];
             let bVal: any = b[sortConfig.key as keyof Member];
@@ -149,7 +213,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         });
 
         return filtered;
-    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig]);
+    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily]);
 
     // 3. Pagination Logic
     const paginatedMembers = useMemo(() => {
@@ -159,13 +223,37 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     const totalPages = Math.ceil(processedMembers.length / pageSize);
 
-    // Reset pagination when filter changes
+    // Reset pagination ONLY when major filters change (optional behavior)
+    // Disini saya comment agar pagination juga tersimpan posisinya jika user refresh.
+    // Jika ingin reset page tiap search, uncomment useEffect di bawah.
+    /*
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus]);
+    }, [searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, selectedFamily]);
+    */
 
+    // --- Filtered Family List for Search ---
+    const filteredFamilyOptions = listFamily.filter(f => 
+        f.name.toLowerCase().includes(familySearchKeyword.toLowerCase())
+    );
 
     // --- Handlers ---
+
+    // RESET FILTER HANDLER
+    const handleResetFilter = () => {
+        // Reset State
+        setSelectedGender([]);
+        setSelectedLevel([]);
+        setSelectedMarriageStatus([]);
+        setMemberStatus('Aktif');
+        setSelectedFamily('');
+        setFamilySearchKeyword('');
+        setSearchText(''); // Reset search text utama juga biar bersih
+        setCurrentPage(1);
+        
+        // Clear Storage
+        sessionStorage.removeItem(STORAGE_KEY);
+    };
 
     const handleSort = (key: keyof Member) => {
         setSortConfig(current => ({
@@ -201,14 +289,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     };
 
     const handleDelete = (member: Member) => {
-        // Menggunakan Password sebagai konfirmasi (Super Admin)
         verifyPasswordAndRun('superadmin354', async () => {
             const toastId = toast.loading('Menghapus data...');
-            
             try {
                 const { error } = await supabase.from('list_sensus').delete().eq('uuid', member.uuid);
                 if (error) throw error;
-
                 toast.success('Data berhasil dihapus', { id: toastId });
                 refreshMembers();
             } catch (err: any) {
@@ -239,8 +324,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         toast.success('File Excel berhasil diunduh');
     };
 
-    // --- Render Helpers ---
-
     const SortIcon = ({ columnKey }: { columnKey: keyof Member }) => {
         if (sortConfig.key !== columnKey) return <ArrowUpDown size={14} className="text-slate-400 opacity-50" />;
         return sortConfig.direction === 'asc' 
@@ -250,7 +333,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
-            {/* 4. Toaster */}
             <Toaster position="top-center" />
 
             {/* Header */}
@@ -276,14 +358,17 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 </div>
             </div>
 
-            {/* Toolbar: Search, Filter, Export */}
+            {/* Toolbar */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 justify-between items-center">
                 <div className="relative w-full md:w-96">
                     <input 
                         type="text" 
                         placeholder="Cari nama, keluarga, dll..." 
                         value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
+                        onChange={(e) => {
+                            setSearchText(e.target.value);
+                            setCurrentPage(1); // Tetap reset page kalau search berubah
+                        }}
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
                     />
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -293,7 +378,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <button 
                         onClick={() => setIsFilterOpen(true)}
                         className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
-                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif') 
+                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily) 
                                 ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
@@ -308,10 +393,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 </div>
             </div>
 
-            {/* Main Table Card */}
+            {/* Table */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-                
-                {/* Table Wrapper for Horizontal Scroll */}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -401,14 +484,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     </table>
                 </div>
 
-                {/* Pagination Footer */}
                 <div className="bg-white border-t border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <span className="text-sm text-slate-500">
                         Menampilkan <span className="font-bold text-slate-800">{paginatedMembers.length}</span> dari <span className="font-bold text-slate-800">{processedMembers.length}</span> data
                     </span>
                     
                     <div className="flex items-center gap-3">
-                        {/* Page Size Selector */}
                         <div className="relative">
                             <select 
                                 value={pageSize} 
@@ -423,7 +504,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             <ArrowUpDown className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                         </div>
 
-                        {/* Pagination Controls */}
                         <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                             <button 
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -450,24 +530,110 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             {/* --- FILTER MODAL (Tailwind) --- */}
             {isFilterOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                             <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Filter size={18} className="text-indigo-600" /> Filter Data</h3>
                             <button onClick={() => setIsFilterOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={20} /></button>
                         </div>
-                        <div className="p-6 space-y-5">
-                            {/* Status Keaktifan */}
+
+                        <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
+                            
+                            {/* 1. Status Keaktifan (Disamakan bentuknya) */}
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status Keaktifan</label>
-                                <select 
-                                    value={memberStatus} 
-                                    onChange={(e) => setMemberStatus(e.target.value as any)}
-                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-                                >
-                                    <option value="Aktif">Aktif Saja</option>
-                                    <option value="Tidak Aktif">Tidak Aktif Saja</option>
-                                    <option value="Semua">Semua Data</option>
-                                </select>
+                                <div className="relative">
+                                    <select 
+                                        value={memberStatus} 
+                                        onChange={(e) => setMemberStatus(e.target.value as any)}
+                                        className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
+                                    >
+                                        <option value="Aktif">Aktif Saja</option>
+                                        <option value="Tidak Aktif">Tidak Aktif Saja</option>
+                                        <option value="Semua">Semua Data</option>
+                                    </select>
+                                    <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
+                                </div>
+                            </div>
+
+                            {/* 2. Kepala Keluarga (Searchable / Combobox) */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Kepala Keluarga</label>
+                                <div className="relative">
+                                    {/* Overlay transparan untuk close dropdown saat klik luar */}
+                                    {isFamilyDropdownOpen && (
+                                        <div 
+                                            className="fixed inset-0 z-10" 
+                                            onClick={() => setIsFamilyDropdownOpen(false)}
+                                        />
+                                    )}
+
+                                    {/* Input Field */}
+                                    <div className="relative z-20">
+                                        <input 
+                                            type="text"
+                                            placeholder="Cari atau pilih keluarga..."
+                                            value={familySearchKeyword}
+                                            onChange={(e) => {
+                                                setFamilySearchKeyword(e.target.value);
+                                                if (!isFamilyDropdownOpen) setIsFamilyDropdownOpen(true);
+                                            }}
+                                            onFocus={() => setIsFamilyDropdownOpen(true)}
+                                            className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-slate-700 placeholder:text-slate-400"
+                                        />
+                                        {/* Icon: X kalau ada isi, Chevron kalau kosong */}
+                                        {selectedFamily || familySearchKeyword ? (
+                                            <button 
+                                                onClick={() => {
+                                                    setSelectedFamily('');
+                                                    setFamilySearchKeyword('');
+                                                }}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 p-1"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        ) : (
+                                            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
+                                        )}
+                                    </div>
+
+                                    {/* Dropdown List */}
+                                    {isFamilyDropdownOpen && (
+                                        <div className="absolute z-30 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
+                                            <div 
+                                                className="px-4 py-2 hover:bg-slate-50 cursor-pointer text-slate-600 italic border-b border-slate-50"
+                                                onClick={() => {
+                                                    setSelectedFamily('');
+                                                    setFamilySearchKeyword('');
+                                                    setIsFamilyDropdownOpen(false);
+                                                }}
+                                            >
+                                                -- Tampilkan Semua --
+                                            </div>
+                                            {filteredFamilyOptions.length > 0 ? (
+                                                filteredFamilyOptions.map((family) => (
+                                                    <div 
+                                                        key={family.id}
+                                                        className={`px-4 py-3 cursor-pointer flex items-center justify-between transition-colors
+                                                            ${selectedFamily === family.name ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
+                                                        onClick={() => {
+                                                            setSelectedFamily(family.name);
+                                                            setFamilySearchKeyword(family.name);
+                                                            setIsFamilyDropdownOpen(false);
+                                                        }}
+                                                    >
+                                                        <span>{family.name}</span>
+                                                        {selectedFamily === family.name && <Check size={16} className="text-indigo-600" />}
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="px-4 py-8 text-center text-slate-400 text-sm">
+                                                    Tidak ada nama keluarga "{familySearchKeyword}"
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Gender */}
@@ -483,7 +649,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                                     if(e.target.checked) setSelectedGender([...selectedGender, g]);
                                                     else setSelectedGender(selectedGender.filter(x => x !== g));
                                                 }}
-                                                className="hidden" // Sembunyikan checkbox asli, gunakan styling label
+                                                className="hidden"
                                             />
                                             {g}
                                         </label>
@@ -512,14 +678,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 </div>
                             </div>
                         </div>
-                        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-200">
+
+                        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-200 shrink-0">
                             <button 
-                                onClick={() => {
-                                    setSelectedGender([]);
-                                    setSelectedLevel([]);
-                                    setSelectedMarriageStatus([]);
-                                    setMemberStatus('Aktif');
-                                }}
+                                onClick={handleResetFilter}
                                 className="px-4 py-2.5 text-slate-600 font-medium hover:bg-slate-200 rounded-xl transition-colors"
                             >
                                 Reset
@@ -535,7 +697,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 </div>
             )}
 
-            {/* --- PASSWORD MODAL (Tailwind) --- */}
+            {/* --- PASSWORD MODAL --- */}
             {openPasswordDialog && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
                     <form onSubmit={handlePasswordSubmit} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center">

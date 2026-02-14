@@ -503,7 +503,7 @@ export default function MemberEdit() {
 
                             {/* --- INPUT URUTAN --- */}
                             <div className="md:col-span-2">
-                                <Label>Urutan dalam KK</Label>
+                                <Label>Urutan dalam Absen</Label>
                                 <div className="relative">
                                     <input 
                                         type="number" 
