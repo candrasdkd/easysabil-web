@@ -3,24 +3,33 @@ import { supabase } from '../supabase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import toast, { Toaster } from 'react-hot-toast';
-import { ChevronLeft, ChevronRight, Loader2, Download, Share2, X, MessageCircle } from 'lucide-react';
+import {
+    ChevronLeft, ChevronRight, Loader2, Download, Share2,
+    X, CheckCircle2, Users, CalendarDays
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { Member } from '../types/Member';
 
 dayjs.locale('id');
 
+const CATEGORIES = [
+    { id: 'Bapak-Bapak', label: 'Bapak-Bapak', color: 'blue' },
+    { id: 'Ibu-Ibu', label: 'Ibu-Ibu', color: 'red' },
+    { id: 'Muda/i Laki-laki', label: 'Muda Putra', color: 'indigo' },
+    { id: 'Muda/i Perempuan', label: 'Muda Putri', color: 'rose' },
+];
+
 export default function MonthlyAttendance() {
     const [currentDate, setCurrentDate] = useState(dayjs());
     const [members, setMembers] = useState<Member[]>([]);
     const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
     const [isLoading, setIsLoading] = useState(false);
-
-    // --- STATE UNTUK SHARE WA ---
+    const [activeTab, setActiveTab] = useState('Bapak-Bapak');
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-    const [selectedShareGroup, setSelectedShareGroup] = useState<string>('Dewasa Laki-laki');
+    const [selectedShareGroup, setSelectedShareGroup] = useState<string>('Bapak-Bapak');
 
-    // --- 1. FETCH MEMBER ---
+    // --- FETCH DATA ---
     const fetchMembers = useCallback(async () => {
         const { data, error } = await supabase
             .from('list_sensus')
@@ -28,44 +37,31 @@ export default function MonthlyAttendance() {
             .eq('is_active', true)
             .order('order', { ascending: true })
             .order('name', { ascending: true });
-
-        if (error) {
-            toast.error('Gagal ambil data member');
-            return;
-        }
-        if (data) setMembers(data as Member[]);
+        if (!error && data) setMembers(data as Member[]);
     }, []);
 
-    // --- 2. FETCH ABSENSI ---
     const fetchAttendance = useCallback(async () => {
         setIsLoading(true);
         const startOfMonth = currentDate.startOf('month').format('YYYY-MM-DD');
         const endOfMonth = currentDate.endOf('month').format('YYYY-MM-DD');
-
         const { data, error } = await supabase
             .from('attendance_log')
             .select('member_id, date, status')
             .gte('date', startOfMonth)
             .lte('date', endOfMonth);
-
-        if (error) {
-            toast.error('Gagal load absensi');
-            setIsLoading(false);
-            return;
+        
+        if (!error && data) {
+            const map: Record<string, string> = {};
+            data.forEach((log: any) => map[`${log.member_id}-${log.date}`] = log.status);
+            setAttendanceMap(map);
         }
-
-        const map: Record<string, string> = {};
-        data?.forEach((log: any) => {
-            map[`${log.member_id}-${log.date}`] = log.status;
-        });
-        setAttendanceMap(map);
         setIsLoading(false);
     }, [currentDate]);
 
     useEffect(() => { fetchMembers(); }, [fetchMembers]);
     useEffect(() => { fetchAttendance(); }, [fetchAttendance]);
 
-    // --- 3. LOGIC HARI (Senin & Kamis) ---
+    // --- LOGIC ---
     const scheduleDays = useMemo(() => {
         const daysInMonth = currentDate.daysInMonth();
         const days = [];
@@ -84,351 +80,293 @@ export default function MonthlyAttendance() {
         return days;
     }, [currentDate]);
 
-    // --- 4. GROUPING MEMBER ---
     const groupedMembers = useMemo(() => {
-        const DEWASA_LEVELS = ['Dewasa', 'Lansia'];
-        const MUDA_LEVELS = ['Pra Remaja', 'Remaja', 'Pra Nikah'];
-        const checkLevel = (memberLevel: string, targetLevels: string[]) =>
-            memberLevel && targetLevels.some(l => l.toLowerCase() === memberLevel.toLowerCase());
-
+        const checkLevel = (l: string, t: string[]) => l && t.some(x => x.toLowerCase() === l.toLowerCase());
         return {
-            'Dewasa Laki-laki': members.filter(m => checkLevel(m.level, DEWASA_LEVELS) && m.gender === 'Laki - Laki'),
-            'Dewasa Perempuan': members.filter(m => checkLevel(m.level, DEWASA_LEVELS) && m.gender === 'Perempuan'),
-            'Muda/i Laki-laki': members.filter(m => checkLevel(m.level, MUDA_LEVELS) && m.gender === 'Laki - Laki'),
-            'Muda/i Perempuan': members.filter(m => checkLevel(m.level, MUDA_LEVELS) && m.gender === 'Perempuan'),
+            'Bapak-Bapak': members.filter(m => checkLevel(m.level, ['Dewasa', 'Lansia']) && m.gender === 'Laki - Laki'),
+            'Ibu-Ibu': members.filter(m => checkLevel(m.level, ['Dewasa', 'Lansia']) && m.gender === 'Perempuan'),
+            'Muda/i Laki-laki': members.filter(m => checkLevel(m.level, ['Pra Remaja', 'Remaja', 'Pra Nikah']) && m.gender === 'Laki - Laki'),
+            'Muda/i Perempuan': members.filter(m => checkLevel(m.level, ['Pra Remaja', 'Remaja', 'Pra Nikah']) && m.gender === 'Perempuan'),
         };
     }, [members]);
 
-    // --- 5. HANDLE SIMPAN (Toggle Cycle: H -> I -> S -> A) ---
     const handleToggle = async (memberId: string, dateStr: string) => {
         const key = `${memberId}-${dateStr}`;
-        const currentStatus = attendanceMap[key];
-        let nextStatus: 'H' | 'I' | 'S' | 'A' | null = null;
-
-        if (!currentStatus) nextStatus = 'H';
-        else if (currentStatus === 'H') nextStatus = 'I';
-        else if (currentStatus === 'I') nextStatus = 'S'; // Tambah SAKIT
-        else if (currentStatus === 'S') nextStatus = 'A'; // Tambah ALFA setelah SAKIT
-        else nextStatus = null;
+        const current = attendanceMap[key];
+        let next: 'H' | 'I' | 'S' | 'A' | null = null;
+        if (!current) next = 'H';
+        else if (current === 'H') next = 'I';
+        else if (current === 'I') next = 'S';
+        else if (current === 'S') next = 'A';
 
         setAttendanceMap(prev => {
-            const next = { ...prev };
-            if (nextStatus) next[key] = nextStatus; else delete next[key];
-            return next;
+            const n = { ...prev };
+            if (next) n[key] = next; else delete n[key];
+            return n;
         });
 
-        try {
-            if (nextStatus) {
-                await supabase.from('attendance_log').upsert(
-                    { member_id: memberId, date: dateStr, status: nextStatus },
-                    { onConflict: 'member_id, date' }
-                );
-            } else {
-                await supabase.from('attendance_log').delete().match({ member_id: memberId, date: dateStr });
-            }
-        } catch (err) {
-            toast.error('Gagal menyimpan');
-        }
+        if (next) await supabase.from('attendance_log').upsert({ member_id: memberId, date: dateStr, status: next }, { onConflict: 'member_id, date' });
+        else await supabase.from('attendance_log').delete().match({ member_id: memberId, date: dateStr });
     };
 
-    // --- 6. EXPORT EXCEL ---
+    // --- ACTIONS ---
     const handleExportExcel = () => {
-        const toastId = toast.loading('Membuat Excel...');
-        const wb = XLSX.utils.book_new();
-        const rows: any[][] = [];
-
-        rows.push([`REKAP ABSENSI BULAN ${currentDate.format('MMMM YYYY').toUpperCase()}`]);
-        rows.push(['']);
-
-        Object.entries(groupedMembers).forEach(([groupName, groupData]) => {
-            if (groupData.length === 0) return;
-
-            rows.push([groupName.toUpperCase()]);
-            // Tambah Header S (Sakit)
-            const headers = ['No', 'Nama', ...scheduleDays.map(d => `${d.shortDay}, ${d.date}`), 'H', 'I', 'S', 'A'];
-            rows.push(headers);
-
-            groupData.forEach((m, idx) => {
-                let h = 0, i = 0, s = 0, a = 0;
-                const dailyStatuses = scheduleDays.map(d => {
-                    const status = attendanceMap[`${m.uuid}-${d.fullDate}`] || '';
-                    if (status === 'H') h++;
-                    if (status === 'I') i++;
-                    if (status === 'S') s++; // Hitung Sakit
-                    if (status === 'A') a++;
-                    return status;
-                });
-                rows.push([m.order || idx + 1, m.name, ...dailyStatuses, h, i, s, a]);
+        // @ts-ignore
+        const currentMembers = groupedMembers[activeTab] || [];
+        const rows = [[`REKAP ${activeTab} - ${currentDate.format('MMM YYYY')}`], [''], ['No', 'Nama', ...scheduleDays.map(d => `${d.shortDay}, ${d.date}`), 'H', 'I', 'S', 'A']];
+        currentMembers.forEach((m: any, i: number) => {
+            let h = 0, i_ = 0, s = 0, a = 0;
+            const stats = scheduleDays.map(d => {
+                const st = attendanceMap[`${m.uuid}-${d.fullDate}`];
+                if (st === 'H') h++; if (st === 'I') i_++; if (st === 'S') s++; if (st === 'A') a++;
+                return st || '';
             });
-            rows.push(['']);
-            rows.push(['']);
+            rows.push([i + 1, m.name, ...stats, h, i_, s, a]);
         });
-
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        const wscols = [{ wch: 5 }, { wch: 30 }];
-        scheduleDays.forEach(() => wscols.push({ wch: 8 }));
-        ws['!cols'] = wscols;
-
-        XLSX.utils.book_append_sheet(wb, ws, 'Rekap Absensi');
-        const fileName = `Absensi_${currentDate.format('MM_YYYY')}.xlsx`;
-        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
-        toast.success('Excel berhasil diunduh', { id: toastId });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Absensi');
+        saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Absensi_${activeTab}.xlsx`);
+        toast.success('Excel Unduh');
     };
 
-    // --- 7. SHARE WHATSAPP LOGIC (FIXED EMOJI) ---
     const executeShareWA = () => {
         // @ts-ignore
-        const targetMembers = groupedMembers[selectedShareGroup] || [];
-
-        if (targetMembers.length === 0) {
-            toast.error('Tidak ada data anggota di grup ini');
-            return;
-        }
-
-        const monthName = currentDate.format('MMMM YYYY');
-
-        // Gunakan \n untuk enter, jangan pakai spasi aneh-aneh
-        let message = `*JURNAL KEGIATAN*\n`;
-        message += `📂 Kelompok: ${selectedShareGroup.toUpperCase()}\n`;
-        message += `🗓 Periode: ${monthName}\n`;
-        message += `-----------------------------\n`;
-
-        const getEmoji = (status: string) => {
-            switch (status) {
-                case 'H': return '✅';
-                case 'I': return 'ℹ️';
-                case 'S': return '🤒';
-                default: return '❌';
-            }
-        };
-
-        targetMembers.forEach((m: Member, idx: number) => {
-            const statusRow = scheduleDays.map(d => {
-                const status = attendanceMap[`${m.uuid}-${d.fullDate}`];
-                return getEmoji(status || '');
-            });
-
-            // Tambahkan baris per member
-            message += `${m.order || idx + 1}. ${m.alias || m.name} :  ${statusRow.join(' ')}\n`;
+        const target = groupedMembers[selectedShareGroup] || [];
+        let msg = `*ABSENSI PENGAJIAN*\n📂 ${selectedShareGroup}\n🗓 ${currentDate.format('MMM YYYY')}\n---\n`;
+        const emo = (s: string) => ({ 'H': '✅', 'I': 'ℹ️', 'S': '🤒', 'A': '❌' }[s] || '➖');
+        target.forEach((m: any, i: number) => {
+            msg += `${i + 1}. ${m.alias || m.name} : ${scheduleDays.map(d => emo(attendanceMap[`${m.uuid}-${d.fullDate}`] || '')).join('')}\n`;
         });
-
-        message += `-----------------------------\n`;
-        message += `_Dicetak oleh Sistem EasySabil_`;
-
-        // --- PERBAIKAN DI SINI ---
-        // 1. Encode text agar emoji aman
-        const encodedMsg = encodeURIComponent(message);
-
-        // 2. Gunakan api.whatsapp.com (bukan wa.me) untuk support emoji lebih baik
-        // 3. Gunakan window.open dengan target _blank
-        const waUrl = `https://api.whatsapp.com/send?text=${encodedMsg}`;
-        window.open(waUrl, '_blank');
-
+        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
         setIsShareModalOpen(false);
     };
 
+    // @ts-ignore
+    const currentMembers = groupedMembers[activeTab] || [];
+    // @ts-ignore
+    const currentConfig = CATEGORIES.find(c => c.id === activeTab);
+
     return (
-        <div className="min-h-screen bg-slate-50 p-4 font-sans text-slate-800">
+        // Padding bottom besar di mobile untuk tombol floating, padding standard di desktop
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-32 md:pb-12">
             <Toaster position="top-center" />
 
-            <div className="max-w-[100vw] mx-auto space-y-6">
-                {/* Header Control */}
-                <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200 gap-4 sticky top-0 z-40">
+            {/* ================= HEADER AREA ================= */}
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+                
+                {/* --- HEADER DESKTOP (Tampilan Web Lama) --- */}
+                <div className="hidden md:flex max-w-[100vw] mx-auto px-6 py-4 justify-between items-center">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900">Jurnal Kegiatan</h1>
-                        <p className="text-slate-500 text-xs">Rekap Hari Senin & Kamis</p>
+                        <h1 className="text-xl font-bold text-slate-900">PENGAJIAN KELOMPOK 1</h1>
+                        <p className="text-slate-500 text-sm">Rekap Absensi Senin & Kamis</p>
                     </div>
-
-                    <div className="flex items-center gap-4 bg-slate-100 p-1 rounded-lg">
-                        <button onClick={() => setCurrentDate(currentDate.subtract(1, 'month'))} className="p-2 hover:bg-white rounded-md transition"><ChevronLeft size={20} /></button>
-                        <div className="w-40 text-center font-bold text-slate-700 uppercase">
-                            {currentDate.format('MMMM YYYY')}
-                        </div>
-                        <button onClick={() => setCurrentDate(currentDate.add(1, 'month'))} className="p-2 hover:bg-white rounded-md transition"><ChevronRight size={20} /></button>
+                    <div className="flex items-center gap-4 bg-slate-100 p-1 rounded-xl">
+                        <button onClick={() => setCurrentDate(currentDate.subtract(1, 'month'))} className="p-2 hover:bg-white rounded-lg shadow-sm"><ChevronLeft size={20} /></button>
+                        <div className="w-40 text-center font-bold text-slate-700 uppercase">{currentDate.format('MMMM YYYY')}</div>
+                        <button onClick={() => setCurrentDate(currentDate.add(1, 'month'))} className="p-2 hover:bg-white rounded-lg shadow-sm"><ChevronRight size={20} /></button>
                     </div>
-
-                    <div className="flex gap-2 w-full md:w-auto">
-                        <button
-                            onClick={handleExportExcel}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition shadow-sm text-sm font-medium"
-                        >
-                            <Download size={16} /> Excel
+                    <div className="flex gap-2">
+                        <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg hover:bg-emerald-100 font-semibold text-sm">
+                            <Download size={18} /> Excel
                         </button>
-                        <button
-                            onClick={() => setIsShareModalOpen(true)}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition shadow-sm text-sm font-medium"
-                        >
-                            <Share2 size={16} /> Share WA
+                        <button onClick={() => { setSelectedShareGroup(activeTab); setIsShareModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm shadow-md">
+                            <Share2 size={18} /> Share WA
                         </button>
                     </div>
                 </div>
 
-                {isLoading ? (
-                    <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>
-                ) : (
-                    <div className="space-y-8 pb-20">
-                        {/* Render Tables */}
-                        <AttendanceTable title="KELOMPOK DEWASA LAKI-LAKI" members={groupedMembers['Dewasa Laki-laki']} days={scheduleDays} attendanceMap={attendanceMap} onToggle={handleToggle} color="blue" />
-                        <AttendanceTable title="KELOMPOK DEWASA PEREMPUAN" members={groupedMembers['Dewasa Perempuan']} days={scheduleDays} attendanceMap={attendanceMap} onToggle={handleToggle} color="pink" />
-                        <AttendanceTable title="KELOMPOK MUDA/I LAKI-LAKI" members={groupedMembers['Muda/i Laki-laki']} days={scheduleDays} attendanceMap={attendanceMap} onToggle={handleToggle} color="indigo" />
-                        <AttendanceTable title="KELOMPOK MUDA/I PEREMPUAN" members={groupedMembers['Muda/i Perempuan']} days={scheduleDays} attendanceMap={attendanceMap} onToggle={handleToggle} color="rose" />
+                {/* --- HEADER MOBILE (Tampilan Mobile Baru Compact) --- */}
+                <div className="flex md:hidden px-4 py-3 flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className={`p-2 rounded-lg bg-${currentConfig?.color}-100 text-${currentConfig?.color}-700`}>
+                                <CalendarDays size={20} />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold leading-none">Jurnal</h1>
+                                <p className="text-xs text-slate-500 font-medium">{currentDate.format('MMMM YYYY')}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center bg-slate-100 rounded-full p-1">
+                            <button onClick={() => setCurrentDate(currentDate.subtract(1, 'month'))} className="p-2 bg-white rounded-full shadow-sm"><ChevronLeft size={16} /></button>
+                            <button onClick={() => setCurrentDate(currentDate.add(1, 'month'))} className="p-2 bg-white rounded-full shadow-sm ml-1"><ChevronRight size={16} /></button>
+                        </div>
                     </div>
+                </div>
+
+                {/* --- TABS KATEGORI (Shared) --- */}
+                {/* Mobile: Negative margin biar full width. Desktop: Normal container */}
+                <div className="md:px-6 px-4 pb-3 md:pb-4 border-t md:border-none pt-2 md:pt-0">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar md:flex-wrap">
+                        {CATEGORIES.map((cat) => (
+                            <button
+                                key={cat.id}
+                                onClick={() => setActiveTab(cat.id)}
+                                className={`
+                                    flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap text-sm font-bold transition-all border flex-shrink-0
+                                    ${activeTab === cat.id
+                                        ? `bg-${cat.color}-600 text-white border-${cat.color}-600 shadow-md`
+                                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
+                                `}
+                            >
+                                {activeTab === cat.id ? <CheckCircle2 size={16} /> : <Users size={16} />}
+                                {cat.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* ================= CONTENT BODY ================= */}
+            <div className="w-full md:px-6 mt-4">
+                {isLoading ? (
+                    <div className="flex justify-center py-20"><Loader2 className="animate-spin text-slate-400" /></div>
+                ) : (
+                    <AttendanceTable
+                        members={currentMembers}
+                        days={scheduleDays}
+                        attendanceMap={attendanceMap}
+                        onToggle={handleToggle}
+                        color={currentConfig?.color}
+                    />
                 )}
             </div>
 
-            {/* --- MODAL PILIH SHARE GRUP --- */}
+            {/* ================= FLOATING ACTIONS (MOBILE ONLY) ================= */}
+            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 z-50 w-full max-w-sm px-4 md:hidden">
+                <button onClick={handleExportExcel} className="flex-1 bg-white border border-emerald-200 text-emerald-700 shadow-xl py-3 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm">
+                    <Download size={18} /> Excel
+                </button>
+                <button onClick={() => { setSelectedShareGroup(activeTab); setIsShareModalOpen(true); }} className="flex-[2] bg-emerald-600 text-white shadow-xl py-3 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm">
+                    <Share2 size={18} /> Share WA
+                </button>
+            </div>
+
+            {/* ================= MODAL SHARE ================= */}
             {isShareModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                <Share2 size={18} className="text-green-600" /> Share ke WhatsApp
-                            </h3>
-                            <button onClick={() => setIsShareModalOpen(false)} className="text-slate-400 hover:text-red-500"><X size={20} /></button>
+                <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
+                    <div className="bg-white rounded-t-3xl md:rounded-2xl w-full max-w-sm p-4 shadow-2xl animate-in slide-in-from-bottom-10">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg">Share WhatsApp</h3>
+                            <button onClick={() => setIsShareModalOpen(false)}><X size={20} className="text-slate-400" /></button>
                         </div>
-
-                        <div className="p-6">
-                            <label className="block text-sm font-semibold text-slate-700 mb-3">Pilih Kelompok:</label>
-                            <div className="space-y-2">
-                                {Object.keys(groupedMembers).map((groupName) => (
-                                    <label
-                                        key={groupName}
-                                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all
-                                            ${selectedShareGroup === groupName
-                                                ? 'border-green-500 bg-green-50 text-green-800 ring-1 ring-green-500'
-                                                : 'border-slate-200 hover:bg-slate-50 text-slate-600'
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <input
-                                                type="radio"
-                                                name="shareGroup"
-                                                value={groupName}
-                                                checked={selectedShareGroup === groupName}
-                                                onChange={(e) => setSelectedShareGroup(e.target.value)}
-                                                className="accent-green-600 w-4 h-4"
-                                            />
-                                            <span className="font-medium text-sm">{groupName}</span>
-                                        </div>
-                                        {/* @ts-ignore */}
-                                        <span className="text-xs bg-white px-2 py-1 rounded border text-slate-400 font-mono">{groupedMembers[groupName].length} Org</span>
-                                    </label>
-                                ))}
-                            </div>
-
-                            <div className="mt-6 bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs text-slate-600">
-                                <p className="font-bold mb-1">Keterangan Emoji:</p>
-                                <div className="grid grid-cols-2 gap-1">
-                                    <span>✅ = Hadir (H)</span>
-                                    <span>❌ = Alfa (A)</span>
-                                    <span>ℹ️ = Izin (I)</span>
-                                    <span>🤒 = Sakit (S)</span>
+                        <div className="space-y-2 mb-4">
+                            {CATEGORIES.map(c => (
+                                <div key={c.id} onClick={() => setSelectedShareGroup(c.id)} className={`p-3 border rounded-xl flex justify-between items-center ${selectedShareGroup === c.id ? 'bg-green-50 border-green-500 text-green-700' : 'border-slate-200'}`}>
+                                    <span className="font-bold text-sm">{c.label}</span>
+                                    {selectedShareGroup === c.id && <CheckCircle2 size={18} />}
                                 </div>
-                            </div>
+                            ))}
                         </div>
-
-                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
-                            <button
-                                onClick={() => setIsShareModalOpen(false)}
-                                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 font-medium rounded-xl hover:bg-slate-100 transition"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={executeShareWA}
-                                className="flex-1 px-4 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200 flex items-center justify-center gap-2"
-                            >
-                                <MessageCircle size={18} /> Kirim WA
-                            </button>
-                        </div>
+                        <button onClick={executeShareWA} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold shadow-lg">Kirim Sekarang</button>
                     </div>
                 </div>
             )}
-
         </div>
     );
 }
 
-// --- SUB-COMPONENT: TABLE ---
-const AttendanceTable = ({ title, members, days, attendanceMap, onToggle, color }: any) => {
-    if (members.length === 0) return null;
-
-    const theme = {
-        blue: 'border-blue-600',
-        pink: 'border-pink-500',
-        indigo: 'border-indigo-500',
-        rose: 'border-rose-400'
+// --- HYBRID TABLE COMPONENT ---
+const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any) => {
+    // Style border header sesuai warna kategori
+    const borderClass = {
+        blue: 'border-blue-500', red: 'border-red-500', indigo: 'border-indigo-500', rose: 'border-rose-500'
     }[color as string] || 'border-slate-500';
 
-    const headerColor = {
-        blue: 'bg-blue-50 text-blue-800',
-        pink: 'bg-pink-50 text-pink-800',
-        indigo: 'bg-indigo-50 text-indigo-800',
-        rose: 'bg-rose-50 text-rose-800'
-    }[color as string] || 'bg-slate-50';
-
     return (
-        <div className={`bg-white rounded-xl shadow-sm border-t-4 ${theme} overflow-hidden`}>
-            <div className={`p-3 border-b border-slate-200 flex justify-between ${headerColor}`}>
-                <h3 className="font-bold text-sm">{title}</h3>
-                <span className="text-xs bg-white/60 px-2 py-0.5 rounded font-bold border border-black/5">{members.length} Anggota</span>
-            </div>
-
+        <div className={`bg-white md:rounded-2xl shadow-sm border-t-4 ${borderClass} overflow-hidden`}>
             <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-xs text-left border-collapse">
-                    <thead className="bg-slate-100 text-slate-600 font-bold uppercase sticky top-0 z-20 shadow-sm">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 text-slate-500 sticky top-0 z-20 shadow-sm">
                         <tr>
-                            <th className="sticky left-0 z-30 bg-slate-100 p-3 border-b border-r min-w-[40px] text-center">No</th>
-                            <th className="sticky left-[40px] z-30 bg-slate-100 p-3 border-b border-r min-w-[200px]">Nama</th>
+                            {/* NO: Hidden di Mobile, Show di Desktop */}
+                            <th className="hidden md:table-cell p-3 border-b border-r border-slate-200 text-center w-10 text-xs font-bold">No</th>
+                            
+                            {/* NAMA: Sticky di Mobile (shadow), Static/Sticky di Desktop */}
+                            <th className="sticky left-0 z-30 bg-slate-50 p-3 border-b border-r border-slate-200 w-[140px] md:w-[250px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)] md:shadow-none">
+                                <span className="text-xs font-bold uppercase">Nama Anggota</span>
+                            </th>
+                            
+                            {/* TANGGAL */}
                             {days.map((d: any) => (
-                                <th key={d.date} className="p-2 border-b text-center min-w-[50px] border-r border-slate-200/50">
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] opacity-60 font-medium">{d.shortDay}</span>
-                                        <span className="text-sm font-bold">{d.date}</span>
+                                <th key={d.date} className="p-2 border-b border-slate-200 text-center min-w-[3.5rem] border-r border-slate-100">
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-[10px] md:text-[9px] uppercase font-bold text-slate-400 mb-0.5">{d.shortDay}</span>
+                                        {/* Mobile: Kotak tanggal. Desktop: Teks biasa saja */}
+                                        <span className="text-sm font-black text-slate-700 md:text-slate-600 bg-white md:bg-transparent border md:border-none border-slate-200 rounded-lg w-8 h-8 md:w-auto md:h-auto flex items-center justify-center shadow-sm md:shadow-none">
+                                            {d.date}
+                                        </span>
                                     </div>
                                 </th>
                             ))}
-                            <th className="sticky right-0 z-30 bg-slate-100 p-3 border-b border-l min-w-[80px] text-center">Total</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {members.map((m: any, idx: number) => {
-                            let h = 0, i = 0, s = 0, a = 0;
-                            return (
-                                <tr key={m.uuid} className="hover:bg-slate-50 transition-colors">
-                                    <td className="sticky left-0 z-10 bg-white p-3 border-r text-center font-medium text-slate-500">{m.order || idx + 1}</td>
-                                    <td className="sticky left-[40px] z-10 bg-white p-3 border-r font-medium text-slate-700 whitespace-nowrap">{m.alias || m.name}</td>
-                                    {days.map((d: any) => {
-                                        const status = attendanceMap[`${m.uuid}-${d.fullDate}`];
-                                        if (status === 'H') h++;
-                                        if (status === 'I') i++;
-                                        if (status === 'S') s++;
-                                        if (status === 'A') a++;
+                        {members.map((m: any, idx: number) => (
+                            <tr key={m.uuid} className="group bg-white hover:bg-slate-50">
+                                {/* NO: Desktop Only */}
+                                <td className="hidden md:table-cell text-center text-xs text-slate-400 font-bold border-r border-slate-100">
+                                    {m.order || idx + 1}
+                                </td>
+                                
+                                {/* NAMA: Sticky Mobile */}
+                                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 p-3 border-r border-slate-100 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] md:shadow-none">
+                                    <div className="flex flex-col justify-center h-10 md:h-auto">
+                                        <span className="text-sm font-semibold text-slate-700 truncate w-[110px] md:w-auto block">
+                                            {m.alias || m.name}
+                                        </span>
+                                        {/* Mobile Only: Nomor urut di bawah nama */}
+                                        <span className="md:hidden text-[10px] text-slate-400">No. {m.order || idx + 1}</span>
+                                    </div>
+                                </td>
 
-                                        let bgClass = '';
-                                        if (status === 'H') bgClass = 'bg-emerald-100 text-emerald-700 font-bold';
-                                        if (status === 'I') bgClass = 'bg-amber-100 text-amber-700 font-bold';
-                                        if (status === 'S') bgClass = 'bg-purple-100 text-purple-700 font-bold'; // Warna Ungu buat Sakit
-                                        if (status === 'A') bgClass = 'bg-rose-100 text-rose-700 font-bold';
+                                {/* CELLS */}
+                                {days.map((d: any) => {
+                                    const status = attendanceMap[`${m.uuid}-${d.fullDate}`];
+                                    
+                                    // --- LOGIC TAMPILAN GANDA ---
+                                    let mobileContent = <div className="w-2 h-2 rounded-full bg-slate-200 mx-auto" />;
+                                    let desktopClass = "md:text-slate-300 md:hover:bg-slate-100";
+                                    let desktopText = "-";
 
-                                        return (
-                                            <td key={d.date} onClick={() => onToggle(m.uuid, d.fullDate)} className={`border-r border-slate-100 text-center cursor-pointer select-none hover:brightness-95 ${bgClass}`}>
-                                                {status}
-                                            </td>
-                                        )
-                                    })}
-                                    <td className="sticky right-0 z-10 bg-slate-50/80 p-2 border-l text-center">
-                                        <div className="flex gap-1 justify-center text-[10px]">
-                                            {h > 0 && <span className="bg-emerald-100 border border-emerald-200 text-emerald-700 w-5 h-5 flex items-center justify-center rounded font-bold" title="Hadir">{h}</span>}
-                                            {i > 0 && <span className="bg-amber-100 border border-amber-200 text-amber-700 w-5 h-5 flex items-center justify-center rounded font-bold" title="Izin">{i}</span>}
-                                            {s > 0 && <span className="bg-purple-100 border border-purple-200 text-purple-700 w-5 h-5 flex items-center justify-center rounded font-bold" title="Sakit">{s}</span>}
-                                            {a > 0 && <span className="bg-rose-100 border border-rose-200 text-rose-700 w-5 h-5 flex items-center justify-center rounded font-bold" title="Alfa">{a}</span>}
-                                        </div>
-                                    </td>
-                                </tr>
-                            )
-                        })}
+                                    if (status === 'H') {
+                                        mobileContent = <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">H</div>;
+                                        desktopClass = "md:bg-emerald-100 md:text-emerald-700 md:font-bold";
+                                        desktopText = "H";
+                                    } else if (status === 'I') {
+                                        mobileContent = <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">I</div>;
+                                        desktopClass = "md:bg-amber-100 md:text-amber-700 md:font-bold";
+                                        desktopText = "I";
+                                    } else if (status === 'S') {
+                                        mobileContent = <div className="w-8 h-8 rounded-full bg-purple-100 border border-purple-200 text-purple-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">S</div>;
+                                        desktopClass = "md:bg-purple-100 md:text-purple-700 md:font-bold";
+                                        desktopText = "S";
+                                    } else if (status === 'A') {
+                                        mobileContent = <div className="w-8 h-8 rounded-full bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">A</div>;
+                                        desktopClass = "md:bg-rose-100 md:text-rose-700 md:font-bold";
+                                        desktopText = "A";
+                                    }
+
+                                    return (
+                                        <td
+                                            key={d.date}
+                                            onClick={() => onToggle(m.uuid, d.fullDate)}
+                                            className={`border-r border-slate-50 cursor-pointer select-none transition-colors active:scale-95 text-center ${desktopClass}`}
+                                        >
+                                            {/* CONTAINER MOBILE: Tinggi, pakai Badge Bulat */}
+                                            <div className="md:hidden h-14 flex items-center justify-center">
+                                                {mobileContent}
+                                            </div>
+
+                                            {/* CONTAINER DESKTOP: Pendek, Full Cell Color (Hidden di Mobile) */}
+                                            <div className="hidden md:block py-2">
+                                                {desktopText}
+                                            </div>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
                     </tbody>
                 </table>
             </div>
