@@ -143,7 +143,7 @@ export default function OrderCategoryScreen() {
             price: String(d.price),
             year: d.year,
         };
-        navigate("/orders", { state: { selectedCategory } });
+        navigate("/category-orders/list", { state: { selectedCategory } });
     };
 
     useEffect(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router'; // Sesuaikan jika pakai 'react-router-dom'
+import { NavLink, useLocation } from 'react-router'; 
 import { 
     LayoutDashboard, 
     Users, 
@@ -8,7 +8,7 @@ import {
     Menu, 
     X, 
     ChevronRight,
-    Globe // Ikon untuk dekorasi publik
+    Globe 
 } from 'lucide-react';
 
 const navItems = [
@@ -23,7 +23,18 @@ export default function Navbar() {
     const [scrolled, setScrolled] = useState(false);
     const location = useLocation();
 
-    // Efek shadow saat scroll
+    // --- LOGIKA BARU UNTUK CEK ACTIVE ---
+    // Fungsi ini mengecek apakah kita sedang berada di halaman tersebut atau anak halamannya
+    const isActiveLink = (path: string) => {
+        if (path === '/') {
+            // Khusus dashboard harus sama persis, kalau tidak dia akan aktif terus
+            return location.pathname === '/';
+        }
+        // Untuk menu lain, gunakan startsWith
+        // Contoh: path '/members' akan aktif jika URL '/members/create' atau '/members/edit/123'
+        return location.pathname.startsWith(path);
+    };
+
     useEffect(() => {
         const handleScroll = () => {
             setScrolled(window.scrollY > 20);
@@ -32,14 +43,12 @@ export default function Navbar() {
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
-    // Tutup menu mobile saat pindah halaman
     useEffect(() => {
         setIsOpen(false);
     }, [location]);
 
     return (
         <>
-            {/* --- TOP NAVBAR --- */}
             <nav 
                 className={`
                     fixed top-0 left-0 right-0 z-50 h-16 transition-all duration-300
@@ -49,9 +58,8 @@ export default function Navbar() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
                     <div className="flex justify-between items-center h-full">
                         
-                        {/* 1. BRAND / LOGO */}
+                        {/* 1. BRAND */}
                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo(0, 0)}>
-                            {/* Logo Icon Box */}
                             <div className="w-9 h-9 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-md">
                                 <Globe size={20} />
                             </div>
@@ -60,40 +68,40 @@ export default function Navbar() {
                             </span>
                         </div>
 
-                        {/* 2. DESKTOP NAVIGATION (Centered & Floating) */}
+                        {/* 2. DESKTOP NAVIGATION */}
                         <div className="hidden md:flex items-center gap-1 bg-slate-100/50 p-1 rounded-full border border-slate-200/60">
-                            {navItems.map((item) => (
-                                <NavLink
-                                    key={item.path}
-                                    to={item.path}
-                                    className={({ isActive }) => `
-                                        flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all duration-200
-                                        ${isActive 
-                                            ? 'bg-white text-indigo-700 shadow-sm border border-slate-100' 
-                                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}
-                                    `}
-                                >
-                                    {({ isActive }) => (
-                                        <>
-                                            <item.icon 
-                                                size={16} 
-                                                className={isActive ? "text-indigo-600 fill-indigo-100" : ""} 
-                                            />
-                                            {item.label}
-                                        </>
-                                    )}
-                                </NavLink>
-                            ))}
+                            {navItems.map((item) => {
+                                // Panggil logika cek active kita
+                                const active = isActiveLink(item.path);
+                                
+                                return (
+                                    <NavLink
+                                        key={item.path}
+                                        to={item.path}
+                                        // Kita tidak lagi menggunakan ({isActive}) bawaan NavLink
+                                        // Tapi menggunakan variabel 'active' yang kita buat sendiri
+                                        className={`
+                                            flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all duration-200
+                                            ${active 
+                                                ? 'bg-white text-indigo-700 shadow-sm border border-slate-100' 
+                                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}
+                                        `}
+                                    >
+                                        <item.icon 
+                                            size={16} 
+                                            className={active ? "text-indigo-600 fill-indigo-100" : ""} 
+                                        />
+                                        {item.label}
+                                    </NavLink>
+                                );
+                            })}
                         </div>
 
-                        {/* 3. RIGHT SIDE (Mobile Toggle Only) */}
+                        {/* 3. RIGHT SIDE */}
                         <div className="flex items-center gap-3">
-                            {/* Di Desktop kosong (atau bisa diisi tombol Donasi/Kontak jika perlu) */}
-                            {/* Di Mobile ada tombol menu */}
                             <button
                                 onClick={() => setIsOpen(true)}
                                 className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 md:hidden transition-colors"
-                                aria-label="Open Menu"
                             >
                                 <Menu size={24} />
                             </button>
@@ -103,8 +111,6 @@ export default function Navbar() {
             </nav>
 
             {/* --- MOBILE DRAWER --- */}
-            
-            {/* Backdrop */}
             <div 
                 className={`
                     fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-sm transition-opacity duration-300 md:hidden
@@ -113,14 +119,12 @@ export default function Navbar() {
                 onClick={() => setIsOpen(false)}
             />
 
-            {/* Sliding Panel */}
             <div
                 className={`
                     fixed inset-y-0 right-0 z-[70] w-[280px] bg-white shadow-2xl transform transition-transform duration-300 ease-out md:hidden flex flex-col
                     ${isOpen ? 'translate-x-0' : 'translate-x-full'}
                 `}
             >
-                {/* Drawer Header */}
                 <div className="flex items-center justify-between p-5 border-b border-slate-100">
                     <span className="font-bold text-lg text-slate-800">Menu Utama</span>
                     <button 
@@ -131,42 +135,38 @@ export default function Navbar() {
                     </button>
                 </div>
 
-                {/* Drawer Links */}
                 <div className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
-                    {navItems.map((item) => (
-                        <NavLink
-                            key={item.path}
-                            to={item.path}
-                            className={({ isActive }) => `
-                                flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all group
-                                ${isActive 
-                                    ? 'bg-indigo-50 text-indigo-700' 
-                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
-                            `}
-                        >
-                            {({ isActive }) => (
-                                <>
-                                    <div className="flex items-center gap-3">
-                                        <item.icon size={18} className={isActive ? "text-indigo-600" : "opacity-75"} />
-                                        {item.label}
-                                    </div>
-                                    {isActive && <ChevronRight size={16} className="text-indigo-400" />}
-                                </>
-                            )}
-                        </NavLink>
-                    ))}
+                    {navItems.map((item) => {
+                        // Terapkan logika yang sama untuk Mobile
+                        const active = isActiveLink(item.path);
+
+                        return (
+                            <NavLink
+                                key={item.path}
+                                to={item.path}
+                                className={`
+                                    flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all group
+                                    ${active 
+                                        ? 'bg-indigo-50 text-indigo-700' 
+                                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
+                                `}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <item.icon size={18} className={active ? "text-indigo-600" : "opacity-75"} />
+                                    {item.label}
+                                </div>
+                                {active && <ChevronRight size={16} className="text-indigo-400" />}
+                            </NavLink>
+                        );
+                    })}
                 </div>
 
-                {/* Drawer Footer (Info Publik) */}
                 <div className="p-6 border-t border-slate-100 bg-slate-50 text-center">
                     <p className="text-xs font-medium text-slate-500">
-                        &copy; {new Date().getFullYear()} EasySabil<br/>
-                        <span className="text-slate-400 font-normal">Sistem Informasi Publik</span>
+                        &copy; {new Date().getFullYear()} EasySabil
                     </p>
                 </div>
             </div>
-
-            {/* Spacer */}
             <div className="h-16" />
         </>
     );

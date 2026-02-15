@@ -6,7 +6,7 @@ import { supabase } from '../supabase/client';
 import { type Member } from '../types/Member';
 
 // --- Interfaces ---
-interface TableProps {}
+interface TableProps { }
 
 interface SensusMetrics {
     balita_l: Member[]; balita_p: Member[];
@@ -61,7 +61,7 @@ const processSensusData = (members: Member[]) => {
 
     members.forEach(m => {
         const gender = (m.gender || '').toLowerCase().trim();
-        const isLaki = gender === 'laki - laki' || gender === 'Laki - Laki' ;
+        const isLaki = gender === 'laki - laki' || gender === 'Laki - Laki';
         const status = (m.marriage_status || '').toLowerCase().trim();
         const level = (m.level || '').toLowerCase().trim();
 
@@ -76,9 +76,9 @@ const processSensusData = (members: Member[]) => {
                 isLaki ? g1.balita_l.push(m) : g1.balita_p.push(m);
             } else if (level.includes('paud')) {
                 isLaki ? g1.paud_l.push(m) : g1.paud_p.push(m);
-            } else if (level.includes('cabe rawit') ) {
+            } else if (level.includes('cabe rawit')) {
                 isLaki ? g1.caberawit_l.push(m) : g1.caberawit_p.push(m);
-            } else if (level.includes('pra remaja') ) {
+            } else if (level.includes('pra remaja')) {
                 isLaki ? g1.praremaja_l.push(m) : g1.praremaja_p.push(m);
             } else if (level.includes('remaja')) {
                 isLaki ? g1.remaja_l.push(m) : g1.remaja_p.push(m);
@@ -89,8 +89,8 @@ const processSensusData = (members: Member[]) => {
 
         if (m.is_educate) isLaki ? stats.jumlahBinaan.l++ : stats.jumlahBinaan.p++;
         if (m.is_duafa) stats.jumlahDuafa.jiwa++;
-        
-        if (m.id_family) {
+
+        if (m.id_family && m.family_name !== 'Rantau') {
             const familyIdStr = String(m.id_family);
             if (!kkSet.has(familyIdStr)) {
                 kkSet.add(familyIdStr);
@@ -304,7 +304,7 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
             });
 
             // compute totals for desa
-            const kelompokKeys = ['kelompok1','kelompok2','kelompok3','kelompok4','kelompok5'] as const;
+            const kelompokKeys = ['kelompok1', 'kelompok2', 'kelompok3', 'kelompok4', 'kelompok5'] as const;
             const totals: Record<string, number> = {};
 
             const sumFor = (cat: keyof GroupedCategories) =>
@@ -435,44 +435,44 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
     );
 
     // helper to read value for a group from groupedData or fallback to g1
-const readGroupValue = (groupIndex: number, category: keyof GroupedCategories) => {
-    // KELOMPOK 1 = SUPABASE
-    if (groupIndex === 1) {
-        switch (category) {
-            case 'balita_l': return g1.balita_l.length;
-            case 'balita_p': return g1.balita_p.length;
-            case 'paud_l': return g1.paud_l.length;
-            case 'paud_p': return g1.paud_p.length;
-            case 'caberawit_l': return g1.caberawit_l.length;
-            case 'caberawit_p': return g1.caberawit_p.length;
-            case 'praremaja_l': return g1.praremaja_l.length;
-            case 'praremaja_p': return g1.praremaja_p.length;
-            case 'remaja_l': return g1.remaja_l.length;
-            case 'remaja_p': return g1.remaja_p.length;
-            case 'pranikah_l': return g1.pranikah_l.length;
-            case 'pranikah_p': return g1.pranikah_p.length;
-            case 'menikah_l': return g1.menikah_l.length;
-            case 'menikah_p': return g1.menikah_p.length;
-            case 'duda': return g1.duda.length;
-            case 'janda': return g1.janda.length;
-            default: return 0;
+    const readGroupValue = (groupIndex: number, category: keyof GroupedCategories) => {
+        // KELOMPOK 1 = SUPABASE
+        if (groupIndex === 1) {
+            switch (category) {
+                case 'balita_l': return g1.balita_l.length;
+                case 'balita_p': return g1.balita_p.length;
+                case 'paud_l': return g1.paud_l.length;
+                case 'paud_p': return g1.paud_p.length;
+                case 'caberawit_l': return g1.caberawit_l.length;
+                case 'caberawit_p': return g1.caberawit_p.length;
+                case 'praremaja_l': return g1.praremaja_l.length;
+                case 'praremaja_p': return g1.praremaja_p.length;
+                case 'remaja_l': return g1.remaja_l.length;
+                case 'remaja_p': return g1.remaja_p.length;
+                case 'pranikah_l': return g1.pranikah_l.length;
+                case 'pranikah_p': return g1.pranikah_p.length;
+                case 'menikah_l': return g1.menikah_l.length;
+                case 'menikah_p': return g1.menikah_p.length;
+                case 'duda': return g1.duda.length;
+                case 'janda': return g1.janda.length;
+                default: return 0;
+            }
         }
-    }
 
-    // KELOMPOK 2–5 = SHEETDB
-    if (!groupedData) return 0;
+        // KELOMPOK 2–5 = SHEETDB
+        if (!groupedData) return 0;
 
-    const key = `kelompok${groupIndex}` as keyof GroupedData;
-    return groupedData[key]?.[category]?.length ?? 0;
-};
+        const key = `kelompok${groupIndex}` as keyof GroupedData;
+        return groupedData[key]?.[category]?.length ?? 0;
+    };
 
 
     const readGroupTotalL = (groupIndex: number) => {
-        const cats: (keyof GroupedCategories)[] = ['balita_l','paud_l','caberawit_l','praremaja_l','remaja_l','pranikah_l','menikah_l','duda'];
+        const cats: (keyof GroupedCategories)[] = ['balita_l', 'paud_l', 'caberawit_l', 'praremaja_l', 'remaja_l', 'pranikah_l', 'menikah_l', 'duda'];
         return cats.reduce((s, c) => s + readGroupValue(groupIndex, c), 0);
     };
     const readGroupTotalP = (groupIndex: number) => {
-        const cats: (keyof GroupedCategories)[] = ['balita_p','paud_p','caberawit_p','praremaja_p','remaja_p','pranikah_p','menikah_p','janda'];
+        const cats: (keyof GroupedCategories)[] = ['balita_p', 'paud_p', 'caberawit_p', 'praremaja_p', 'remaja_p', 'pranikah_p', 'menikah_p', 'janda'];
         return cats.reduce((s, c) => s + readGroupValue(groupIndex, c), 0);
     };
     const readGroupTotalAll = (groupIndex: number) => readGroupTotalL(groupIndex) + readGroupTotalP(groupIndex);
@@ -687,21 +687,21 @@ const readGroupValue = (groupIndex: number, category: keyof GroupedCategories) =
                                 <p style={{ margin: 0, fontWeight: 'bold', textDecoration: 'underline', marginBottom: '8px' }}>Keterangan</p>
                                 <table style={{ border: 'none', fontSize: '16px' }}>
                                     <tbody>
-                                        <tr><td style={{padding: '3px'}}>Balita</td><td style={{padding: '3px'}}>: 0 - 3 Tahun</td></tr>
-                                        <tr><td style={{padding: '3px'}}>Paud</td><td style={{padding: '3px'}}>: 4 - 5 Tahun</td></tr>
-                                        <tr><td style={{padding: '3px'}}>Caberawit</td><td style={{padding: '3px'}}>: 6 - 12 Tahun (SD)</td></tr>
-                                        <tr><td style={{padding: '3px'}}>Pra Remaja</td><td style={{padding: '3px'}}>: 13 - 15 Tahun (SMP)</td></tr>
+                                        <tr><td style={{ padding: '3px' }}>Balita</td><td style={{ padding: '3px' }}>: 0 - 3 Tahun</td></tr>
+                                        <tr><td style={{ padding: '3px' }}>Paud</td><td style={{ padding: '3px' }}>: 4 - 5 Tahun</td></tr>
+                                        <tr><td style={{ padding: '3px' }}>Caberawit</td><td style={{ padding: '3px' }}>: 6 - 12 Tahun (SD)</td></tr>
+                                        <tr><td style={{ padding: '3px' }}>Pra Remaja</td><td style={{ padding: '3px' }}>: 13 - 15 Tahun (SMP)</td></tr>
                                     </tbody>
                                 </table>
                             </div>
                             <div style={{ paddingTop: '28px' }}>
                                 <table style={{ border: 'none', fontSize: '16px' }}>
                                     <tbody>
-                                        <tr><td style={{padding: '3px'}}>Remaja</td><td style={{padding: '3px'}}>: 16 - 18 Tahun (SMA)</td></tr>
-                                        <tr><td style={{padding: '3px'}}>Dewasa</td><td style={{padding: '3px'}}>: 19 Tahun+ (Belum Nikah)</td></tr>
-                                        <tr><td style={{padding: '3px'}}>L</td><td style={{padding: '3px'}}>:
+                                        <tr><td style={{ padding: '3px' }}>Remaja</td><td style={{ padding: '3px' }}>: 16 - 18 Tahun (SMA)</td></tr>
+                                        <tr><td style={{ padding: '3px' }}>Dewasa</td><td style={{ padding: '3px' }}>: 19 Tahun+ (Belum Nikah)</td></tr>
+                                        <tr><td style={{ padding: '3px' }}>L</td><td style={{ padding: '3px' }}>:
                                             Laki - laki</td></tr>
-                                        <tr><td style={{padding: '3px'}}>P</td><td style={{padding: '3px'}}>:
+                                        <tr><td style={{ padding: '3px' }}>P</td><td style={{ padding: '3px' }}>:
                                             Perempuan</td></tr>
                                     </tbody>
                                 </table>

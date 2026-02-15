@@ -19,7 +19,7 @@ export default function AppRoutes() {
                 <Route path="/members/:id/edit" element={<MemberEditPage />} />
                 <Route path="/members/:id" element={<MemberDetailPage />} />
                 <Route path="/category-orders" element={<CategoryOrder />} />
-                <Route path="/orders" element={<OrderListPage />} />
+                <Route path="/category-orders/list" element={<OrderListPage />} />
                 <Route path="/rekap" element={<TabelSensusScreen />} />
                 {/* Tambahkan rute lainnya sesuai kebutuhan */}
                 {/* atau komponen MemberList langsung di sini */}
