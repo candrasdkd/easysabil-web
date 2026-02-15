@@ -16,6 +16,7 @@ const navItems = [
     { label: 'Sensus', path: '/members', icon: Users },
     { label: 'Pemesanan', path: '/category-orders', icon: ShoppingCart },
     { label: 'Rekap', path: '/rekap', icon: FileText },
+    { label: 'Absensi', path: '/attendance', icon: Globe },
 ];
 
 export default function Navbar() {

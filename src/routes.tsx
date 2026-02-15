@@ -8,6 +8,7 @@ import Navbar from './components/Navbar';
 import CategoryOrder from './components/CategoryOrder';
 import TabelSensusScreen from "./components/TableTotalSensus";
 import OrderListPage from './components/ListOrder';
+import MonthlyAttendance from './components/AttendanceLog';
 export default function AppRoutes() {
     return (
         <>
@@ -21,6 +22,7 @@ export default function AppRoutes() {
                 <Route path="/category-orders" element={<CategoryOrder />} />
                 <Route path="/category-orders/list" element={<OrderListPage />} />
                 <Route path="/rekap" element={<TabelSensusScreen />} />
+                <Route path='/attendance' element={<MonthlyAttendance />} />
                 {/* Tambahkan rute lainnya sesuai kebutuhan */}
                 {/* atau komponen MemberList langsung di sini */}
             </Routes>
