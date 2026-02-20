@@ -13,12 +13,16 @@ interface BeforeInstallPromptEvent extends Event {
 export default function InstallPWA() {
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isVisible, setIsVisible] = useState(false);
+    const [needsManualInstall, setNeedsManualInstall] = useState(false);
     const [isIOS, setIsIOS] = useState(false);
 
     useEffect(() => {
-        // Check if it's iOS
-        const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafariBrowser = /safari/.test(userAgent) && !/chrome|chromium|crios|edg/.test(userAgent);
+
         setIsIOS(isIOSDevice);
+        setNeedsManualInstall(isIOSDevice || isSafariBrowser);
 
         const handler = (e: Event) => {
             // Prevent the mini-infobar from appearing on mobile
@@ -32,12 +36,13 @@ export default function InstallPWA() {
         window.addEventListener('beforeinstallprompt', handler);
 
         // Check if already installed
-        if (window.matchMedia('(display-mode: standalone)').matches) {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        if (isStandalone) {
             setIsVisible(false);
         }
 
-        // For iOS, we can show it manually since beforeinstallprompt doesn't fire
-        if (isIOSDevice && !window.matchMedia('(display-mode: standalone)').matches) {
+        // For Apple devices (iOS/Safari), we show it manually since beforeinstallprompt doesn't fire
+        if ((isIOSDevice || isSafariBrowser) && !isStandalone) {
             const hasDismissed = localStorage.getItem('pwa_prompt_dismissed');
             if (!hasDismissed) {
                 setIsVisible(true);
@@ -48,10 +53,14 @@ export default function InstallPWA() {
     }, []);
 
     const handleInstallClick = async () => {
-        if (!deferredPrompt && !isIOS) return;
+        if (!deferredPrompt && !needsManualInstall) return;
 
-        if (isIOS) {
-            alert('To install: tap the share icon (square with arrow up) and select "Add to Home Screen"');
+        if (needsManualInstall) {
+            if (isIOS) {
+                alert('Untuk install: tap icon Share (kotak dengan panah ke atas) di bawah layar, lalu pilih "Add to Home Screen" / "Tambah ke Layar Utama"');
+            } else {
+                alert('Untuk install: klik icon Share di pojok kanan atas browser Safari, lalu pilih "Add to Dock..."');
+            }
             return;
         }
 
