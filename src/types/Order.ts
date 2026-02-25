@@ -17,10 +17,10 @@ export type DataDropdown = {
 };
 
 export type DataOrder = {
-    id: number;
+    id: number | string;
     user_name: string;
     user_id: string;
-    id_category_order: number;
+    id_category_order: number | string;
     name_category: string;
     total_order: number;
     unit_price: number;

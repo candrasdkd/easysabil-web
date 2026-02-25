@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from "react-router";
-import { supabase } from "../supabase/client";
-import { 
-    RefreshCw, 
-    AlertCircle, 
-    Calendar, 
-    Tag, 
-    ChevronRight, 
-    Loader2 
+import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '../firebase/client';
+import {
+    RefreshCw,
+    AlertCircle,
+    Calendar,
+    Tag,
+    ChevronRight,
+    Loader2
 } from 'lucide-react';
 
 // --- TYPES ---
@@ -17,13 +18,6 @@ export interface OrderCategory {
     price: number;
     year: number;
 }
-
-type CategoryOrderRow = {
-    id: string;
-    name: string;
-    year: number;
-    price: string | number | null;
-};
 
 // --- HELPER FUNCTIONS ---
 const formatPrice = (v: number) =>
@@ -43,7 +37,7 @@ const stringHue = (s: string) => {
 // --- COMPONENT: CATEGORY CARD ---
 const CategoryCard = ({ data, onSelect }: { data: OrderCategory; onSelect: (c: OrderCategory) => void }) => {
     const hue = stringHue(data.name);
-    
+
     // Style dinamis untuk background gradient
     const dynamicStyle = {
         background: `linear-gradient(135deg, hsl(${hue} 70% 96% / 1), hsl(${(hue + 60) % 360} 70% 98% / 1))`,
@@ -56,17 +50,17 @@ const CategoryCard = ({ data, onSelect }: { data: OrderCategory; onSelect: (c: O
     };
 
     return (
-        <div 
+        <div
             onClick={() => onSelect(data)}
             className="group relative overflow-hidden rounded-3xl border p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg cursor-pointer"
             style={dynamicStyle}
         >
             {/* Dekorasi Background Abstrak */}
-            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 rounded-full opacity-20 blur-2xl" 
-                 style={{ backgroundColor: `hsl(${hue} 70% 60%)` }}></div>
-            
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 rounded-full opacity-20 blur-2xl"
+                style={{ backgroundColor: `hsl(${hue} 70% 60%)` }}></div>
+
             <div className="relative z-10 flex flex-col h-full justify-between gap-6">
-                
+
                 {/* Header Card */}
                 <div className="flex justify-between items-start">
                     <div className="p-3 rounded-2xl" style={iconStyle}>
@@ -89,7 +83,7 @@ const CategoryCard = ({ data, onSelect }: { data: OrderCategory; onSelect: (c: O
                                 {formatPrice(data.price)}
                             </p>
                         </div>
-                        
+
                         <div className="w-10 h-10 rounded-full bg-white border border-white/50 flex items-center justify-center text-slate-400 group-hover:bg-slate-900 group-hover:text-white transition-colors shadow-sm">
                             <ChevronRight size={20} />
                         </div>
@@ -111,20 +105,18 @@ export default function OrderCategoryScreen() {
         setLoading(true);
         setError(null);
         try {
-            const { data, error } = await supabase
-                .from("category_order")
-                .select("id,name,year,price")
-                // PERUBAHAN DI SINI: Urutkan berdasarkan 'year', descending (terbaru dulu)
-                .order("year", { ascending: false });
+            const q = query(collection(db, 'category_orders'), orderBy('year', 'desc'));
+            const querySnapshot = await getDocs(q);
 
-            if (error) throw error;
-
-            const mapped: OrderCategory[] = (data as CategoryOrderRow[]).map((r) => ({
-                id: String(r.id),
-                name: r.name,
-                year: Number(r.year),
-                price: r.price === null ? 0 : Number(r.price),
-            }));
+            const mapped: OrderCategory[] = querySnapshot.docs.map((doc) => {
+                const r = doc.data();
+                return {
+                    id: doc.id,
+                    name: r.name,
+                    year: Number(r.year),
+                    price: r.price === null ? 0 : Number(r.price),
+                };
+            });
             setRows(mapped);
         } catch (err: any) {
             setError(err.message);
@@ -152,15 +144,15 @@ export default function OrderCategoryScreen() {
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
-            
+
             {/* Header Section */}
             <div className="max-w-7xl mx-auto mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Kategori Pemesanan</h1>
                     <p className="text-sm text-slate-500 mt-1">Pilih kategori untuk melihat atau membuat pesanan baru.</p>
                 </div>
-                <button 
-                    onClick={fetchData} 
+                <button
+                    onClick={fetchData}
                     disabled={loading}
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm disabled:opacity-50"
                 >

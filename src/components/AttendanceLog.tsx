@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase } from '../supabase/client';
+import { collection, query, where, orderBy, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import toast, { Toaster } from 'react-hot-toast';
@@ -31,31 +32,43 @@ export default function MonthlyAttendance() {
 
     // --- FETCH DATA ---
     const fetchMembers = useCallback(async () => {
-        const { data, error } = await supabase
-            .from('list_sensus')
-            .select('uuid, name, alias, gender, level, is_active, order')
-            .eq('is_active', true)
-            .order('order', { ascending: true })
-            .order('name', { ascending: true });
-        if (!error && data) setMembers(data as Member[]);
+        try {
+            const q = query(
+                collection(db, 'sensus'),
+                where('is_active', '==', true),
+                orderBy('order', 'asc'),
+                orderBy('name', 'asc')
+            );
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(d => ({ uuid: d.id, ...d.data() }));
+            setMembers(data as any as Member[]);
+        } catch (error) {
+            console.error("Error fetching members:", error);
+        }
     }, []);
 
     const fetchAttendance = useCallback(async () => {
         setIsLoading(true);
-        const startOfMonth = currentDate.startOf('month').format('YYYY-MM-DD');
-        const endOfMonth = currentDate.endOf('month').format('YYYY-MM-DD');
-        const { data, error } = await supabase
-            .from('attendance_log')
-            .select('member_id, date, status')
-            .gte('date', startOfMonth)
-            .lte('date', endOfMonth);
-        
-        if (!error && data) {
+        try {
+            const startOfMonth = currentDate.startOf('month').format('YYYY-MM-DD');
+            const endOfMonth = currentDate.endOf('month').format('YYYY-MM-DD');
+            const q = query(
+                collection(db, 'attendance_logs'),
+                where('date', '>=', startOfMonth),
+                where('date', '<=', endOfMonth)
+            );
+            const querySnapshot = await getDocs(q);
             const map: Record<string, string> = {};
-            data.forEach((log: any) => map[`${log.member_id}-${log.date}`] = log.status);
+            querySnapshot.forEach(d => {
+                const log = d.data();
+                map[`${log.member_id}-${log.date}`] = log.status;
+            });
             setAttendanceMap(map);
+        } catch (error) {
+            console.error("Error fetching attendance:", error);
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }, [currentDate]);
 
     useEffect(() => { fetchMembers(); }, [fetchMembers]);
@@ -105,8 +118,16 @@ export default function MonthlyAttendance() {
             return n;
         });
 
-        if (next) await supabase.from('attendance_log').upsert({ member_id: memberId, date: dateStr, status: next }, { onConflict: 'member_id, date' });
-        else await supabase.from('attendance_log').delete().match({ member_id: memberId, date: dateStr });
+        try {
+            const docRef = doc(db, 'attendance_logs', `${memberId}_${dateStr}`);
+            if (next) {
+                await setDoc(docRef, { member_id: memberId, date: dateStr, status: next }, { merge: true });
+            } else {
+                await deleteDoc(docRef);
+            }
+        } catch (error) {
+            console.error("Error updating attendance log:", error);
+        }
     };
 
     // --- ACTIONS ---
@@ -153,7 +174,7 @@ export default function MonthlyAttendance() {
 
             {/* ================= HEADER AREA ================= */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-                
+
                 {/* --- HEADER DESKTOP (Tampilan Web Lama) --- */}
                 <div className="hidden md:flex max-w-[100vw] mx-auto px-6 py-4 justify-between items-center">
                     <div>
@@ -281,12 +302,12 @@ const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any)
                         <tr>
                             {/* NO: Hidden di Mobile, Show di Desktop */}
                             <th className="hidden md:table-cell p-3 border-b border-r border-slate-200 text-center w-10 text-xs font-bold">No</th>
-                            
+
                             {/* NAMA: Sticky di Mobile (shadow), Static/Sticky di Desktop */}
                             <th className="sticky left-0 z-30 bg-slate-50 p-3 border-b border-r border-slate-200 w-[140px] md:w-[250px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)] md:shadow-none">
                                 <span className="text-xs font-bold uppercase">Nama Anggota</span>
                             </th>
-                            
+
                             {/* TANGGAL */}
                             {days.map((d: any) => (
                                 <th key={d.date} className="p-2 border-b border-slate-200 text-center min-w-[3.5rem] border-r border-slate-100">
@@ -308,7 +329,7 @@ const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any)
                                 <td className="hidden md:table-cell text-center text-xs text-slate-400 font-bold border-r border-slate-100">
                                     {m.order || idx + 1}
                                 </td>
-                                
+
                                 {/* NAMA: Sticky Mobile */}
                                 <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 p-3 border-r border-slate-100 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] md:shadow-none">
                                     <div className="flex flex-col justify-center h-10 md:h-auto">
@@ -323,7 +344,7 @@ const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any)
                                 {/* CELLS */}
                                 {days.map((d: any) => {
                                     const status = attendanceMap[`${m.uuid}-${d.fullDate}`];
-                                    
+
                                     // --- LOGIC TAMPILAN GANDA ---
                                     let mobileContent = <div className="w-2 h-2 rounded-full bg-slate-200 mx-auto" />;
                                     let desktopClass = "md:text-slate-300 md:hover:bg-slate-100";

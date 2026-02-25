@@ -1,24 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { supabase } from '../supabase/client';
+import { getDoc, doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 // 1. Import Toast
 import toast, { Toaster } from 'react-hot-toast';
-import { 
-    ArrowLeft, 
-    Edit, 
-    Trash2, 
-    Lock, 
-    Loader2, 
-    User, 
-    Calendar, 
-    Users, 
-    GraduationCap, 
-    Heart, 
-    Activity, 
-    HandHeart, 
-    BookOpen, 
+import {
+    ArrowLeft,
+    Edit,
+    Trash2,
+    Lock,
+    Loader2,
+    User,
+    Calendar,
+    Users,
+    GraduationCap,
+    Heart,
+    Activity,
+    HandHeart,
+    BookOpen,
     Hash,
     Tag,
     AlertTriangle,
@@ -47,10 +48,10 @@ const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: any, label: 
 
 // --- Helper Component: Badge ---
 const StatusBadge = ({ active, activeText, inactiveText, color }: any) => {
-    const bg = active 
+    const bg = active
         ? (color === 'green' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-indigo-100 text-indigo-700 border-indigo-200')
         : 'bg-slate-100 text-slate-500 border-slate-200';
-    
+
     return (
         <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${bg}`}>
             <div className={`w-1.5 h-1.5 rounded-full ${active ? (color === 'green' ? 'bg-emerald-500' : 'bg-indigo-500') : 'bg-slate-400'}`}></div>
@@ -67,14 +68,14 @@ export default function MemberShow() {
     // --- State ---
     const [member, setMember] = useState<Member | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    
+
     // Auth & Actions
     const [isAuthenticated, setIsAuthenticated] = useState(() => {
         const stored = localStorage.getItem(AUTH_KEY);
         if (stored && Date.now() - parseInt(stored, 10) < SESSION_DURATION) return true;
         return false;
     });
-    
+
     const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
     const [passwordInput, setPasswordInput] = useState('');
     const [loadingPassword, setLoadingPassword] = useState(false);
@@ -85,14 +86,13 @@ export default function MemberShow() {
     const fetchMember = useCallback(async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('list_sensus')
-                .select('*')
-                .eq('uuid', id)
-                .single();
+            const docRef = doc(db, 'sensus', id as string);
+            const docSnap = await getDoc(docRef);
 
-            if (error) throw error;
-            setMember(data);
+            if (!docSnap.exists()) {
+                throw new Error("Data tidak ditemukan");
+            }
+            setMember({ uuid: docSnap.id, ...docSnap.data() } as Member);
         } catch (err: any) {
             // 2. Ganti error fetch
             toast.error(`Gagal memuat data: ${err.message}`);
@@ -109,7 +109,7 @@ export default function MemberShow() {
 
     const handleAction = (action: 'edit' | 'delete') => {
         if (isAuthenticated) {
-            localStorage.setItem(AUTH_KEY, Date.now().toString()); 
+            localStorage.setItem(AUTH_KEY, Date.now().toString());
             executeAction(action);
         } else {
             setPendingAction(action);
@@ -134,7 +134,7 @@ export default function MemberShow() {
 
         setLoadingPassword(true);
         setTimeout(() => {
-            if (passwordInput === "admin354") { 
+            if (passwordInput === "admin354") {
                 localStorage.setItem(AUTH_KEY, Date.now().toString());
                 setIsAuthenticated(true);
                 setOpenPasswordDialog(false);
@@ -152,15 +152,15 @@ export default function MemberShow() {
 
     const confirmDelete = async () => {
         if (!member) return;
-        
+
         // 5. Tambahkan loading UX saat hapus
         const toastId = toast.loading('Menghapus data...');
         setIsLoading(true);
+        console.log(member);
 
         try {
-            const { error } = await supabase.from('list_sensus').delete().eq('uuid', member.uuid);
-            if (error) throw error;
-            
+            await deleteDoc(doc(db, 'sensus', member.uuid));
+
             // 6. Sukses hapus (update toast loading jadi sukses)
             toast.success('Data berhasil dihapus', { id: toastId });
             navigate('/members');
@@ -190,8 +190,8 @@ export default function MemberShow() {
 
     if (!member) return null;
 
-    const pageTitle = member.family_name === 'Rantau' 
-        ? 'Anggota Perantauan' 
+    const pageTitle = member.family_name === 'Rantau'
+        ? 'Anggota Perantauan'
         : `Keluarga ${member.family_name}`;
 
     return (
@@ -202,8 +202,8 @@ export default function MemberShow() {
             {/* Header Navigation */}
             <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
                 <div className="flex items-center gap-4">
-                    <button 
-                        onClick={() => navigate('/members')} 
+                    <button
+                        onClick={() => navigate('/members')}
                         className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 text-slate-600 transition-colors shadow-sm"
                     >
                         <ArrowLeft size={20} />
@@ -223,14 +223,14 @@ export default function MemberShow() {
                             <Lock size={18} />
                         </button>
                     )}
-                    <button 
-                        onClick={() => handleAction('edit')} 
+                    <button
+                        onClick={() => handleAction('edit')}
                         className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 hover:border-indigo-200 hover:text-indigo-700 transition-all shadow-sm"
                     >
                         <Edit size={18} /> <span className="hidden sm:inline">Edit</span>
                     </button>
-                    <button 
-                        onClick={() => handleAction('delete')} 
+                    <button
+                        onClick={() => handleAction('delete')}
                         className="flex items-center gap-2 px-5 py-2.5 bg-rose-50 border border-rose-100 text-rose-600 font-medium rounded-xl hover:bg-rose-100 transition-all shadow-sm"
                     >
                         <Trash2 size={18} /> <span className="hidden sm:inline">Hapus</span>
@@ -240,7 +240,7 @@ export default function MemberShow() {
 
             {/* Main Content */}
             <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
+
                 {/* Left Column: Main Identity */}
                 <div className="lg:col-span-2 space-y-6">
                     <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
@@ -250,29 +250,29 @@ export default function MemberShow() {
                             </div>
                             <h2 className="text-xl font-bold text-slate-800">Informasi Personal</h2>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <DetailItem 
-                                icon={User} 
-                                label="Nama Lengkap" 
-                                value={member.name} 
+                            <DetailItem
+                                icon={User}
+                                label="Nama Lengkap"
+                                value={member.name}
                                 subValue={member.alias ? `Panggilan: ${member.alias}` : undefined}
                             />
-                            <DetailItem 
-                                icon={Hash} 
-                                label="Jenis Kelamin" 
-                                value={member.gender} 
+                            <DetailItem
+                                icon={Hash}
+                                label="Jenis Kelamin"
+                                value={member.gender}
                             />
-                            <DetailItem 
-                                icon={Calendar} 
-                                label="Tanggal Lahir" 
+                            <DetailItem
+                                icon={Calendar}
+                                label="Tanggal Lahir"
                                 value={member.date_of_birth ? dayjs(member.date_of_birth).format('DD MMMM YYYY') : '-'}
                                 subValue={`${member.age} Tahun`}
                             />
-                            <DetailItem 
-                                icon={Heart} 
-                                label="Status Pernikahan" 
-                                value={member.marriage_status} 
+                            <DetailItem
+                                icon={Heart}
+                                label="Status Pernikahan"
+                                value={member.marriage_status}
                             />
                         </div>
                     </div>
@@ -284,27 +284,27 @@ export default function MemberShow() {
                             </div>
                             <h2 className="text-xl font-bold text-slate-800">Sosial & Keluarga</h2>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <DetailItem 
-                                icon={Users} 
-                                label="Keluarga" 
-                                value={member.family_name} 
+                            <DetailItem
+                                icon={Users}
+                                label="Keluarga"
+                                value={member.family_name}
                             />
-                            <DetailItem 
-                                icon={Tag} 
-                                label="Urutan di KK" 
-                                value={member.order ? `Urutan ke-${member.order}` : '-'} 
+                            <DetailItem
+                                icon={Tag}
+                                label="Urutan di KK"
+                                value={member.order ? `Urutan ke-${member.order}` : '-'}
                             />
-                            <DetailItem 
-                                icon={BookOpen} 
-                                label="Jenjang Pembinaan" 
-                                value={member.level} 
+                            <DetailItem
+                                icon={BookOpen}
+                                label="Jenjang Pembinaan"
+                                value={member.level}
                             />
-                            <DetailItem 
-                                icon={Users} 
-                                label="Kelompok" 
-                                value={member.kelompok || '-'} 
+                            <DetailItem
+                                icon={Users}
+                                label="Kelompok"
+                                value={member.kelompok || '-'}
                             />
                         </div>
                     </div>
@@ -314,7 +314,7 @@ export default function MemberShow() {
                 <div className="space-y-6">
                     <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm h-full">
                         <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Status Keanggotaan</h3>
-                        
+
                         <div className="space-y-4">
                             {/* Is Active */}
                             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -373,8 +373,8 @@ export default function MemberShow() {
                         </div>
                         <h3 className="text-xl font-bold text-slate-800 mb-2">Verifikasi Diperlukan</h3>
                         <p className="text-sm text-slate-500 mb-6">Masukkan password admin untuk {pendingAction === 'edit' ? 'mengubah' : 'menghapus'} data ini.</p>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
                             autoFocus
                             placeholder="Password"
                             value={passwordInput}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabase/client';
+import { collection, query, orderBy, getDocs, addDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 // 1. Hapus import useNotifications lama
 // import useNotifications from '../hooks/useNotifications/useNotifications'; 
 import toast, { Toaster } from 'react-hot-toast'; // 2. Import React Hot Toast
@@ -86,13 +87,16 @@ export default function MemberCreate() {
             localStorage.setItem(AUTH_KEY, Date.now().toString());
             const fetchKeluarga = async () => {
                 setLoadingKeluarga(true);
-                const { data, error } = await supabase
-                    .from('list_family')
-                    .select('id, name')
-                    .order('name', { ascending: true });
-
-                if (!error) setKeluargaOptions(data || []);
-                setLoadingKeluarga(false);
+                try {
+                    const q = query(collection(db, 'families'), orderBy('name', 'asc'));
+                    const querySnapshot = await getDocs(q);
+                    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setKeluargaOptions(data as any as Familys[]);
+                } catch (error) {
+                    console.error("Error fetching families:", error);
+                } finally {
+                    setLoadingKeluarga(false);
+                }
             };
             fetchKeluarga();
         }
@@ -202,7 +206,7 @@ export default function MemberCreate() {
         const toastId = toast.loading('Menyimpan data...');
 
         try {
-            const selectedKeluarga = keluargaOptions.find(k => k.id === Number(formValues.keluarga));
+            const selectedKeluarga = keluargaOptions.find(k => String(k.id) === formValues.keluarga);
             const body = {
                 name: formValues.name,
                 alias: formValues.alias,
@@ -211,14 +215,17 @@ export default function MemberCreate() {
                 level: formValues.education,
                 age: formValues.age,
                 marriage_status: formValues.marriage_status,
-                id_family: selectedKeluarga?.id,
+                family_id: selectedKeluarga?.id,
                 family_name: selectedKeluarga?.name,
                 is_educate: formValues.is_educate,
+                is_active: true,
             };
 
-            const { error } = await supabase.from('list_sensus').insert([body]);
-            if (error) throw error;
+            const cleanBody = Object.fromEntries(Object.entries(body).filter(([_, v]) => v !== undefined));
 
+            const { error } = await addDoc(collection(db, 'sensus'), cleanBody).then(() => ({ error: null })).catch(err => ({ error: err }));
+            if (error) throw error;
+            // console.log(error);
             // Sukses toast update
             toast.success('Data berhasil disimpan', { id: toastId });
 
@@ -228,6 +235,7 @@ export default function MemberCreate() {
             localStorage.setItem(AUTH_KEY, Date.now().toString());
 
         } catch (error: any) {
+            console.log(error);
             // Error toast update
             toast.error(`Gagal simpan: ${error.message}`, { id: toastId });
         } finally {

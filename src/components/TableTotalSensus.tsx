@@ -2,7 +2,8 @@ import React, { forwardRef, useRef, useMemo, useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import { toPng } from 'html-to-image';
 import dayjs from 'dayjs';
-import { supabase } from '../supabase/client';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import { type Member } from '../types/Member';
 
 // --- Interfaces ---
@@ -119,18 +120,15 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
     const [countBinaan, setCountBinaan] = useState<Record<string, { l: number; p: number }>>({});
     const [countDuafa, setCountDuafa] = useState<Record<string, number> | null>(null);
 
-    // fetch supabase members (kept for backward compatibility / fallback)
+    // fetch firebase members (kept for backward compatibility / fallback)
     useEffect(() => {
         const fetchMembers = async () => {
             setLoading(true);
             try {
-                const { data, error } = await supabase
-                    .from('list_sensus')
-                    .select('*')
-                    .eq('is_active', true);
-
-                if (error) throw error;
-                if (data) setMembers(data as Member[]);
+                const q = query(collection(db, 'sensus'), where('is_active', '==', true));
+                const querySnapshot = await getDocs(q);
+                const data = querySnapshot.docs.map(doc => ({ uuid: doc.id, ...doc.data() }));
+                setMembers(data as any as Member[]);
             } catch (err: any) {
                 console.error("Gagal ambil data:", err);
                 // keep user-friendly notification

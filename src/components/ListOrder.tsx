@@ -48,7 +48,7 @@ const OrderListPage: React.FC = () => {
     const [modalSummary, setModalSummary] = useState(false);
     const [modalFilter, setModalFilter] = useState(false);
     const [modalDelete, setModalDelete] = useState(false);
-    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [deleteId, setDeleteId] = useState<number | string | null>(null);
 
     const [isAuthenticated, setIsAuthenticated] = useState(() => {
         const storedTimestamp = localStorage.getItem(AUTH_KEY);
@@ -63,7 +63,7 @@ const OrderListPage: React.FC = () => {
     const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
     const [passwordInput, setPasswordInput] = useState("");
     const [loadingPassword, setLoadingPassword] = useState(false);
-    const [pendingAction, setPendingAction] = useState<{ type: 'create' | 'edit' | 'delete', payload?: DataOrder | number } | null>(null);
+    const [pendingAction, setPendingAction] = useState<{ type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string } | null>(null);
 
     const [modalUpdate, setModalUpdate] = useState(false);
     const [isMemberDropdownOpen, setIsMemberDropdownOpen] = useState(false);
@@ -71,7 +71,7 @@ const OrderListPage: React.FC = () => {
     const memberRef = useRef<HTMLDivElement>(null);
 
     const [dataUpload, setDataUpload] = useState({
-        idCard: null as number | null,
+        idCard: null as number | string | null,
         user: { label: "", value: "", id: "" },
         category: { label: "", value: "", id: "", name: "", price: "" } as SelectedCategoryProps,
         totalOrder: "",
@@ -84,7 +84,7 @@ const OrderListPage: React.FC = () => {
 
     const [actualPricePay, setActualPricePay] = useState("");
     const [isExactChange, setIsExactChange] = useState(false);
-    const [paymentDetail, setPaymentDetail] = useState({ id: 0, price: 0 });
+    const [paymentDetail, setPaymentDetail] = useState({ id: "" as number | string, price: 0 });
 
     // --- Memoized Values ---
     const filteredOrder = useMemo(() => {
@@ -103,7 +103,7 @@ const OrderListPage: React.FC = () => {
     );
 
     // --- Handlers ---
-    const handleAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number) => {
+    const handleAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string) => {
         const stored = localStorage.getItem(AUTH_KEY);
         const isValid = stored && (Date.now() - parseInt(stored, 10) < SESSION_DURATION);
 
@@ -119,7 +119,7 @@ const OrderListPage: React.FC = () => {
         }
     };
 
-    const executeAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number) => {
+    const executeAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string) => {
         if (type === 'create') {
             resetForm();
             setModalUpdate(false);
@@ -147,8 +147,8 @@ const OrderListPage: React.FC = () => {
             setModalUpdate(true);
             setModalCreate(true);
         } else if (type === 'delete') {
-            if (typeof payload === 'number') {
-                setDeleteId(payload);
+            if (payload !== undefined) {
+                setDeleteId(payload as number | string);
                 setModalDelete(true);
             }
         }
@@ -194,7 +194,7 @@ const OrderListPage: React.FC = () => {
         const body = {
             user_name: dataUpload.user.value,
             user_id: dataUpload.user.id,
-            id_category_order: parseInt(String(dataUpload.category.id)),
+            id_category_order: String(dataUpload.category.id),
             name_category: dataUpload.category.label,
             total_order: parseInt(dataUpload.totalOrder),
             unit_price: parseInt(String(dataUpload.category.price)),

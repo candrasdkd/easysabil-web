@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../supabase/client';
+import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import MemberList from '../components/MemberList';
 import { setMembersStore, type Member } from '../types/Member';
 
@@ -9,22 +10,18 @@ export default function MembersListPage() {
 
     const fetchMembers = useCallback(async () => {
         setIsLoading(true);
-        const { data, error } = await supabase
-            .from('list_sensus')
-            .select('*')
-            .order('name', { ascending: true });
+        try {
+            const q = query(collection(db, 'sensus'), orderBy('name', 'asc'));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ uuid: doc.id, ...doc.data() }));
 
-        if (error) {
-            // opsional: bisa tampilkan notifikasi di sini
+            setMembers(data as any as Member[]);
+            setMembersStore(data as any as Member[]);
+        } catch (error) {
+            console.error("Error fetching members:", error);
+        } finally {
             setIsLoading(false);
-            return;
         }
-
-        if (data) {
-            setMembers(data as Member[]);
-            setMembersStore(data as Member[]);
-        }
-        setIsLoading(false);
     }, []);
 
     useEffect(() => {

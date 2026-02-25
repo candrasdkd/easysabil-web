@@ -5,7 +5,7 @@ import type { DataOrder } from '../types/Order';
 interface OrderCardProps {
     order: DataOrder;
     onEdit: (order: DataOrder) => void;
-    onDelete: (id: number) => void;
+    onDelete: (id: number | string) => void;
     onPay: (order: DataOrder) => void;
     formatRupiah: (n: string | number) => string;
 }
@@ -32,6 +32,12 @@ const OrderCard: React.FC<OrderCardProps> = ({
                     </div>
                 </div>
                 <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <button
+                        onClick={() => onEdit(order)}
+                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                    >
+                        <Edit2 size={16} />
+                    </button>
                     <button
                         onClick={() => onEdit(order)}
                         className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../supabase/client'
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import Dashboard from '../components/Dashboard'
 import { setMembersStore, type Familys, type Member } from '../types/Member'
 
@@ -8,21 +9,27 @@ export default function DashboardPage() {
     const [listFamily, setListFamily] = useState<Familys[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const fetchMembers = async () => {
-        const { data, error } = await supabase.from('list_sensus').select('*').eq('is_active', true)
-        if (!error && data) {
-            setMembers(data)
-            setMembersStore(data)
-            setIsLoading(false)
+        try {
+            const q = query(collection(db, 'sensus'), where('is_active', '==', true));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ uuid: doc.id, ...doc.data() }));
+            setMembers(data as any as Member[]);
+            setMembersStore(data as any as Member[]);
+            setIsLoading(false);
+        } catch (error) {
+            console.error("Error fetching members:", error);
+            setIsLoading(false);
         }
     }
 
     const fetchFamilys = async () => {
-        const { data, error } = await supabase.from('list_family').select('id, name')
-            .order('name', { ascending: true });
-        if (!error && data) {
-            setListFamily(data)
-            // setMembersStore(data)
-            // setIsLoading(false)
+        try {
+            const q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setListFamily(data as any as Familys[]);
+        } catch (error) {
+            console.error("Error fetching families:", error);
         }
     }
     useEffect(() => {

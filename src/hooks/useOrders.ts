@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '../supabase/client';
+import { collection, query, orderBy, where, getDocs, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import type { DataOrder, DataDropdown } from '../types/Order';
 
 export const useOrders = (categoryFilterId: string | null, showAllData: boolean) => {
@@ -11,13 +12,13 @@ export const useOrders = (categoryFilterId: string | null, showAllData: boolean)
     const fetchDataOrder = useCallback(async () => {
         setLoading(true);
         try {
-            let query = supabase.from("list_order").select("*").order("created_at", { ascending: false });
+            let q = query(collection(db, "orders"), orderBy("created_at", "desc"));
             if (categoryFilterId && !showAllData) {
-                query = query.eq("id_category_order", categoryFilterId);
+                q = query(collection(db, "orders"), where("id_category_order", "==", categoryFilterId), orderBy("created_at", "desc"));
             }
-            const { data, error: fetchError } = await query;
-            if (fetchError) throw fetchError;
-            setDataOrder((data as DataOrder[]) || []);
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setDataOrder(data as any as DataOrder[]);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -29,15 +30,20 @@ export const useOrders = (categoryFilterId: string | null, showAllData: boolean)
         fetchDataOrder();
     }, [fetchDataOrder]);
 
-    const saveOrder = async (orderData: Partial<DataOrder>, isUpdate: boolean, id?: number | null) => {
+    const saveOrder = async (orderData: Partial<DataOrder>, isUpdate: boolean, id?: number | string | null) => {
         setUploading(true);
         try {
-            const query = isUpdate
-                ? supabase.from("list_order").update(orderData).eq("id", id)
-                : supabase.from("list_order").insert([orderData]);
-
-            const { error: saveError } = await query;
-            if (saveError) throw saveError;
+            if (isUpdate && id) {
+                const docRef = doc(db, "orders", String(id));
+                // Remove undefined values to prevent Firestore errors
+                const cleanData = Object.fromEntries(Object.entries(orderData).filter(([_, v]) => v !== undefined));
+                await updateDoc(docRef, cleanData);
+            } else {
+                await addDoc(collection(db, "orders"), {
+                    ...orderData,
+                    created_at: new Date()
+                });
+            }
 
             await fetchDataOrder();
             return { success: true };
@@ -48,11 +54,10 @@ export const useOrders = (categoryFilterId: string | null, showAllData: boolean)
         }
     };
 
-    const deleteOrder = async (id: number) => {
+    const deleteOrder = async (id: number | string) => {
         setUploading(true);
         try {
-            const { error: deleteError } = await supabase.from("list_order").delete().eq("id", id);
-            if (deleteError) throw deleteError;
+            await deleteDoc(doc(db, "orders", String(id)));
             await fetchDataOrder();
             return { success: true };
         } catch (e) {
@@ -62,19 +67,17 @@ export const useOrders = (categoryFilterId: string | null, showAllData: boolean)
         }
     };
 
-    const updatePayment = async (id: number, price: number) => {
+    const updatePayment = async (id: number | string, price: number) => {
         setUploading(true);
         try {
-            const { error: updateError } = await supabase.from("list_order")
-                .update({
-                    actual_price: price,
-                    is_payment: true,
-                    payment_method: 'Cash',
-                    money_holder: 'Fachih'
-                })
-                .eq("id", id);
+            const docRef = doc(db, "orders", String(id));
+            await updateDoc(docRef, {
+                actual_price: price,
+                is_payment: true,
+                payment_method: 'Cash',
+                money_holder: 'Fachih'
+            });
 
-            if (updateError) throw updateError;
             await fetchDataOrder();
             return { success: true };
         } catch (e) {
@@ -101,18 +104,24 @@ export const useOrderDropdowns = () => {
     const [dataDropdownCategory, setDataDropdownCategory] = useState<DataDropdown[]>([]);
 
     const fetchDropdowns = useCallback(async () => {
-        const [sensusRes, catRes] = await Promise.all([
-            supabase.from("list_sensus").select("uuid,name").order("name", { ascending: true }),
-            supabase.from("category_order").select("*").order("year", { ascending: false })
-        ]);
+        try {
+            const sensusQuery = query(collection(db, "sensus"), orderBy("name", "asc"));
+            const catQuery = query(collection(db, "category_orders"), orderBy("year", "desc"));
 
-        if (!sensusRes.error) {
-            setDataDropdownSensus(sensusRes.data.map(i => ({ label: i.name, value: i.name, id: i.uuid })));
-        }
-        if (!catRes.error) {
-            setDataDropdownCategory(catRes.data.map(i => ({
+            const [sensusSnap, catSnap] = await Promise.all([
+                getDocs(sensusQuery),
+                getDocs(catQuery)
+            ]);
+
+            const sensusData = sensusSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+            const catData = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+
+            setDataDropdownSensus(sensusData.map(i => ({ label: i.name || '', value: i.name || '', id: i.id })));
+            setDataDropdownCategory(catData.map(i => ({
                 ...i, label: `${i.name} ${i.year}`, value: `${i.name} ${i.year}`, id: i.id
             })));
+        } catch (error) {
+            console.error("Error fetching dropdowns", error);
         }
     }, []);
 

@@ -4,7 +4,8 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { supabase } from '../supabase/client';
+import { collection, query, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 import toast, { Toaster } from 'react-hot-toast';
 import {
     Search,
@@ -122,13 +123,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword]);
 
     const fetchFamilys = async () => {
-        const { data, error } = await supabase
-            .from('list_family')
-            .select('id, name')
-            .order('name', { ascending: true });
-
-        if (!error && data) {
-            setListFamily(data);
+        try {
+            const q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setListFamily(data as any as Family[]);
+        } catch (error) {
+            console.error("Error fetching families:", error);
         }
     };
 
@@ -281,8 +282,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         verifyPasswordAndRun('superadmin354', async () => {
             const toastId = toast.loading('Menghapus data...');
             try {
-                const { error } = await supabase.from('list_sensus').delete().eq('uuid', member.uuid);
-                if (error) throw error;
+                await deleteDoc(doc(db, 'sensus', member.uuid));
                 toast.success('Data berhasil dihapus', { id: toastId });
                 refreshMembers();
             } catch (err: any) {

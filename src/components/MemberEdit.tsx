@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../supabase/client';
+import { collection, query, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase/client';
 // 1. Import Toast
 import toast, { Toaster } from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -69,7 +70,8 @@ export default function MemberEdit() {
     const [openErrorModal, setOpenErrorModal] = useState(false);
 
     const INITIAL_FORM_VALUES = {
-        keluarga: '',
+        family_id: '',
+        family_name: '',
         name: '',
         alias: '',
         date_of_birth: '',
@@ -93,13 +95,16 @@ export default function MemberEdit() {
 
     const fetchKeluarga = useCallback(async () => {
         setLoadingKeluarga(true);
-        const { data, error } = await supabase
-            .from('list_family')
-            .select('id, name')
-            .order('name', { ascending: true });
-
-        if (!error) setKeluargaOptions(data || []);
-        setLoadingKeluarga(false);
+        try {
+            const q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setKeluargaOptions(data as any as Familys[]);
+        } catch (error) {
+            console.error("Error fetching families:", error);
+        } finally {
+            setLoadingKeluarga(false);
+        }
     }, []);
 
     const formatAge = (dob: string | null | undefined) => {
@@ -119,39 +124,44 @@ export default function MemberEdit() {
 
     const fetchMemberDetail = useCallback(async (uuid: string) => {
         setIsLoadingDetail(true);
-        const { data, error } = await supabase
-            .from('list_sensus')
-            .select('*')
-            .eq('uuid', uuid)
-            .single();
+        try {
+            const docRef = doc(db, 'sensus', uuid);
+            const docSnap = await getDoc(docRef);
 
-        if (error || !data) {
-            // 2. Ganti notifikasi error fetch
-            toast.error('Gagal memuat data member');
+            if (!docSnap.exists()) {
+                toast.error('Gagal memuat data member');
+                setIsLoadingDetail(false);
+                return;
+            }
+
+            const data = docSnap.data();
+            console.log('data', data);
+            setFormValues({
+                family_id: data.family_id ? String(data.family_id) : '',
+                family_name: data.family_name || '',
+                name: data.name || '',
+                alias: data.alias || '',
+                date_of_birth: data.date_of_birth || '',
+                gender: data.gender || '',
+                education: data.level || '',
+                marriage_status: data.marriage_status || '',
+                is_educate: data.is_educate || false,
+                age: data.date_of_birth ? formatAge(data.date_of_birth) : '-',
+                is_active: data.is_active ?? true,
+                is_duafa: data.is_duafa ?? false,
+                order: data.order
+            });
+
+            if (data.family_name) {
+                setFamilySearch(data.family_name);
+            }
+
             setIsLoadingDetail(false);
-            return;
+        } catch (error) {
+            console.error("Error fetching member detail:", error);
+            toast.error('Gagal memuat data detail');
+            setIsLoadingDetail(false);
         }
-
-        setFormValues({
-            keluarga: data.id_family ? String(data.id_family) : '',
-            name: data.name || '',
-            alias: data.alias || '',
-            date_of_birth: data.date_of_birth || '',
-            gender: data.gender || '',
-            education: data.level || '',
-            marriage_status: data.marriage_status || '',
-            is_educate: data.is_educate || false,
-            age: data.date_of_birth ? formatAge(data.date_of_birth) : '-',
-            is_active: data.is_active ?? true,
-            is_duafa: data.is_duafa ?? false,
-            order: data.order
-        });
-
-        if (data.family_name) {
-            setFamilySearch(data.family_name);
-        }
-
-        setIsLoadingDetail(false);
     }, []);
 
     // --- EFFECTS ---
@@ -228,19 +238,19 @@ export default function MemberEdit() {
     };
 
     const handleSelectFamily = (family: Familys) => {
-        setFormValues(prev => ({ ...prev, keluarga: String(family.id) }));
+        setFormValues(prev => ({ ...prev, family_id: String(family.id), family_name: family.name }));
         setFamilySearch(family.name);
         setIsFamilyDropdownOpen(false);
     };
 
     const handleClearFamily = () => {
-        setFormValues(prev => ({ ...prev, keluarga: '' }));
+        setFormValues(prev => ({ ...prev, family_id: '', family_name: '' }));
         setFamilySearch('');
     };
 
     const validateForm = () => {
         const errors: string[] = [];
-        if (!formValues.keluarga) errors.push("Keluarga belum dipilih");
+        if (!formValues.family_id) errors.push("Keluarga belum dipilih");
         if (!formValues.name?.trim()) errors.push("Nama lengkap wajib diisi");
         if (!formValues.date_of_birth) errors.push("Tanggal lahir wajib diisi");
         if (!formValues.gender) errors.push("Jenis kelamin wajib dipilih");
@@ -250,6 +260,7 @@ export default function MemberEdit() {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
+        console.log('formValues', formValues);
         e.preventDefault();
         const errors = validateForm();
         if (errors.length > 0) {
@@ -262,9 +273,9 @@ export default function MemberEdit() {
         // 5. Loading Toast State
         const toastId = toast.loading('Menyimpan perubahan...');
 
-        try {
-            const selectedKeluarga = keluargaOptions.find(k => k.id === Number(formValues.keluarga));
 
+        try {
+            const selectedFamily = keluargaOptions.find(k => String(k.id) === formValues.family_id);
             const body = {
                 name: formValues.name,
                 alias: formValues.alias,
@@ -273,20 +284,16 @@ export default function MemberEdit() {
                 level: formValues.education,
                 age: formValues.age,
                 marriage_status: formValues.marriage_status,
-                id_family: selectedKeluarga ? selectedKeluarga.id : Number(formValues.keluarga),
-                family_name: selectedKeluarga ? selectedKeluarga.name : familySearch,
+                family_id: selectedFamily ? selectedFamily.id : formValues.family_id,
+                family_name: selectedFamily ? selectedFamily.name : familySearch,
                 is_educate: formValues.is_educate,
                 is_active: formValues.is_active,
                 is_duafa: formValues.is_duafa,
                 order: formValues.order
             };
 
-            const { error } = await supabase
-                .from('list_sensus')
-                .update(body)
-                .eq('uuid', id);
-
-            if (error) throw error;
+            const docRef = doc(db, 'sensus', id as string);
+            await updateDoc(docRef, body);
 
             // 6. Sukses Toast Update
             toast.success('Data berhasil diperbarui', { id: toastId });
@@ -416,13 +423,13 @@ export default function MemberEdit() {
                                             onChange={(e) => {
                                                 setFamilySearch(e.target.value);
                                                 setIsFamilyDropdownOpen(true);
-                                                if (formValues.keluarga) setFormValues(prev => ({ ...prev, keluarga: '' }));
+                                                if (formValues.family_id) setFormValues(prev => ({ ...prev, family_id: '' }));
                                             }}
                                             onFocus={() => setIsFamilyDropdownOpen(true)}
                                             className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
                                         />
                                         <div className="absolute right-3 flex items-center gap-1">
-                                            {formValues.keluarga && (
+                                            {formValues.family_id && (
                                                 <button type="button" onClick={(e) => { e.stopPropagation(); handleClearFamily(); }} className="p-1 text-slate-400 hover:text-red-500">
                                                     <X size={16} />
                                                 </button>
@@ -438,11 +445,11 @@ export default function MemberEdit() {
                                                         key={family.id}
                                                         onClick={() => handleSelectFamily(family)}
                                                         className={`px-4 py-3 cursor-pointer hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-0 flex items-center justify-between
-                                                            ${String(family.id) === formValues.keluarga ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'}
+                                                            ${String(family.id) === formValues.family_id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'}
                                                         `}
                                                     >
                                                         {family.name}
-                                                        {String(family.id) === formValues.keluarga && <Users size={16} className="text-indigo-600" />}
+                                                        {String(family.id) === formValues.family_id && <Users size={16} className="text-indigo-600" />}
                                                     </div>
                                                 ))
                                             ) : (
