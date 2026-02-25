@@ -387,11 +387,14 @@ export default function MemberCreate() {
                             </div>
                             <div>
                                 <Label required>Jenis Kelamin</Label>
-                                <select name="gender" value={formValues.gender} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-                                    <option value="">-- Pilih --</option>
-                                    <option value="Laki - Laki">Laki - Laki</option>
-                                    <option value="Perempuan">Perempuan</option>
-                                </select>
+                                <div className="relative">
+                                    <select name="gender" value={formValues.gender} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none pr-10">
+                                        <option value="">-- Pilih --</option>
+                                        <option value="Laki - Laki">Laki - Laki</option>
+                                        <option value="Perempuan">Perempuan</option>
+                                    </select>
+                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -405,30 +408,34 @@ export default function MemberCreate() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <Label required>Jenjang Pembinaan</Label>
-                                <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-                                    <option value="">-- Pilih Jenjang --</option>
-                                    <option value="Batita">Batita (0-3 Tahun)</option>
-                                    <option value="Paud">Paud (3-5 Tahun)</option>
-                                    <option value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</option>
-                                    <option value="Pra Remaja">Pra Remaja (12-15 Tahun)</option>
-                                    <option value="Remaja">Remaja (15-19 Tahun)</option>
-                                    <option value="Pra Nikah">Pra Nikah (19-30 Tahun)</option>
-                                    <option value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</option>
-                                    <option value="Lansia">Lansia (70+ Tahun)</option>
-                                </select>
+                                <div className="relative">
+                                    <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none pr-10">
+                                        <option value="">-- Pilih Jenjang --</option>
+                                        <option value="Batita">Batita (0-3 Tahun)</option>
+                                        <option value="Paud">Paud (3-5 Tahun)</option>
+                                        <option value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</option>
+                                        <option value="Pra Remaja">Pra Remaja (12-15 Tahun)</option>
+                                        <option value="Remaja">Remaja (15-19 Tahun)</option>
+                                        <option value="Pra Nikah">Pra Nikah (19-30 Tahun)</option>
+                                        <option value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</option>
+                                        <option value="Lansia">Lansia (70+ Tahun)</option>
+                                    </select>
+                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
                             </div>
 
                             <div>
                                 <Label required>Status Pernikahan</Label>
                                 <div className="relative">
-                                    <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                    <Heart className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none">
                                         <option value="">-- Pilih Status --</option>
                                         <option value="Belum Menikah">Belum Menikah</option>
                                         <option value="Menikah">Menikah</option>
                                         <option value="Janda">Janda</option>
                                         <option value="Duda">Duda</option>
                                     </select>
-                                    <Heart className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                 </div>
                             </div>
 

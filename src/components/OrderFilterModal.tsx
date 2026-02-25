@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Filter } from 'lucide-react';
+import { X, Filter, ChevronDown } from 'lucide-react';
 import type { DataDropdown } from '../types/Order';
 
 interface OrderFilterModalProps {
@@ -39,17 +39,20 @@ const OrderFilterModal: React.FC<OrderFilterModalProps> = ({
                 <div className="p-6 space-y-5">
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Kategori</label>
-                        <select
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium"
-                            value={categoryLabel}
-                            onChange={(e) => {
-                                const selected = dataDropdownCategory.find(c => c.value === e.target.value);
-                                onCategoryChange(e.target.value, selected ? String(selected.id) : null);
-                            }}
-                        >
-                            <option value="">Semua Kategori</option>
-                            {dataDropdownCategory.map(c => <option key={c.id} value={String(c.value)}>{c.label}</option>)}
-                        </select>
+                        <div className="relative">
+                            <select
+                                className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium appearance-none cursor-pointer"
+                                value={categoryLabel}
+                                onChange={(e) => {
+                                    const selected = dataDropdownCategory.find(c => c.value === e.target.value);
+                                    onCategoryChange(e.target.value, selected ? String(selected.id) : null);
+                                }}
+                            >
+                                <option value="">Semua Kategori</option>
+                                {dataDropdownCategory.map(c => <option key={c.id} value={String(c.value)}>{c.label}</option>)}
+                            </select>
+                            <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
                     </div>
 
                     <div className="space-y-2">

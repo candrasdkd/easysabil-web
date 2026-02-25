@@ -88,30 +88,33 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                     {/* Category Selection */}
                     <div className="space-y-2">
                         <label className="text-sm font-bold text-slate-700">Kategori Pesanan</label>
-                        <select
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                            value={dataUpload.category.id}
-                            onChange={(e) => {
-                                const selected = dataDropdownCategory.find(cat => String(cat.id) === e.target.value);
-                                if (selected) {
-                                    setDataUpload({
-                                        ...dataUpload,
-                                        category: {
-                                            label: selected.label,
-                                            value: selected.label,
-                                            id: String(selected.id),
-                                            name: selected.name || "",
-                                            price: String(selected.price || "")
-                                        }
-                                    });
-                                }
-                            }}
-                        >
-                            <option value="">Pilih Kategori...</option>
-                            {dataDropdownCategory.map(cat => (
-                                <option key={cat.id} value={cat.id}>{cat.label}</option>
-                            ))}
-                        </select>
+                        <div className="relative">
+                            <select
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
+                                value={dataUpload.category.id}
+                                onChange={(e) => {
+                                    const selected = dataDropdownCategory.find(cat => String(cat.id) === e.target.value);
+                                    if (selected) {
+                                        setDataUpload({
+                                            ...dataUpload,
+                                            category: {
+                                                label: selected.label,
+                                                value: selected.label,
+                                                id: String(selected.id),
+                                                name: selected.name || "",
+                                                price: String(selected.price || "")
+                                            }
+                                        });
+                                    }
+                                }}
+                            >
+                                <option value="">Pilih Kategori...</option>
+                                {dataDropdownCategory.map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.label}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -164,29 +167,35 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                             <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700">Diterima Ke (Holder)</label>
-                                    <select
-                                        className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={dataUpload.moneyHolder}
-                                        onChange={(e) => setDataUpload({ ...dataUpload, moneyHolder: e.target.value })}
-                                    >
-                                        <option value="">Pilih Pemegang Uang...</option>
-                                        {['Sutoyo', 'Riko', 'Candra', 'Fahmi', 'Fachih'].map(name => (
-                                            <option key={name} value={name}>{name}</option>
-                                        ))}
-                                    </select>
+                                    <div className="relative">
+                                        <select
+                                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                                            value={dataUpload.moneyHolder}
+                                            onChange={(e) => setDataUpload({ ...dataUpload, moneyHolder: e.target.value })}
+                                        >
+                                            <option value="">Pilih Pemegang Uang...</option>
+                                            {['Sutoyo', 'Riko', 'Candra', 'Fahmi', 'Fachih'].map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700">Metode</label>
-                                        <select
-                                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none"
-                                            value={dataUpload.paymentMethod}
-                                            onChange={(e) => setDataUpload({ ...dataUpload, paymentMethod: e.target.value })}
-                                        >
-                                            <option value="Cash">Cash</option>
-                                            <option value="Transfer">Transfer</option>
-                                        </select>
+                                        <div className="relative">
+                                            <select
+                                                className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none appearance-none cursor-pointer"
+                                                value={dataUpload.paymentMethod}
+                                                onChange={(e) => setDataUpload({ ...dataUpload, paymentMethod: e.target.value })}
+                                            >
+                                                <option value="Cash">Cash</option>
+                                                <option value="Transfer">Transfer</option>
+                                            </select>
+                                            <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700">Nominal Uang</label>
