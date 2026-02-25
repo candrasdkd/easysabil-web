@@ -1,26 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react'; 
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase/client';
 // 1. Hapus import useNotifications lama
 // import useNotifications from '../hooks/useNotifications/useNotifications'; 
 import toast, { Toaster } from 'react-hot-toast'; // 2. Import React Hot Toast
 import dayjs from 'dayjs';
-import { 
-    Lock, 
-    Loader2, 
-    Save, 
-    XCircle, 
-    ChevronLeft, 
-    User, 
-    Calendar, 
+import {
+    Lock,
+    Loader2,
+    Save,
+    XCircle,
+    ChevronLeft,
+    User,
     Heart,
-    Search, 
-    ChevronDown, 
+    Search,
+    ChevronDown,
     X,
     Users,
     GraduationCap,
     Tag
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
+import CustomDatePicker from './CustomDatePicker';
 
 const AUTH_KEY = 'member_create_session';
 const SESSION_DURATION = 30 * 60 * 1000;
@@ -51,13 +51,13 @@ export default function MemberCreate() {
     const [passwordInput, setPasswordInput] = useState('');
     const [loadingPassword, setLoadingPassword] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
+
     // --- STATE UNTUK SEARCHABLE KELUARGA ---
     const [keluargaOptions, setKeluargaOptions] = useState<Familys[]>([]);
     const [loadingKeluarga, setLoadingKeluarga] = useState(false);
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [familySearch, setFamilySearch] = useState('');
-    const familyDropdownRef = useRef<HTMLDivElement>(null); 
+    const familyDropdownRef = useRef<HTMLDivElement>(null);
     // ---------------------------------------
 
     const [errorList, setErrorList] = useState<string[]>([]);
@@ -66,18 +66,18 @@ export default function MemberCreate() {
     const INITIAL_FORM_VALUES = {
         keluarga: '',
         name: '',
-        alias: '', 
-        date_of_birth: '', 
+        alias: '',
+        date_of_birth: dayjs().format('YYYY-MM-DD'),
         gender: '',
         education: '',
         marriage_status: '',
         is_educate: false,
-        age: 0
+        age: '0 Bulan'
     };
 
     const [formValues, setFormValues] = useState(INITIAL_FORM_VALUES);
 
-    const filteredKeluarga = keluargaOptions.filter(k => 
+    const filteredKeluarga = keluargaOptions.filter(k =>
         k.name.toLowerCase().includes(familySearch.toLowerCase())
     );
 
@@ -135,6 +135,21 @@ export default function MemberCreate() {
         toast('Sesi dikunci kembali', { icon: '🔒' });
     };
 
+    const formatAge = (dob: string | null | undefined) => {
+        if (!dob) return '-';
+        const birthDate = dayjs(dob);
+        const today = dayjs();
+        if (birthDate.isAfter(today)) return '-';
+
+        const years = today.diff(birthDate, 'year');
+        const months = today.diff(birthDate.add(years, 'year'), 'month');
+
+        if (years === 0 && months === 0) return '< 1 Bulan';
+        if (years === 0) return `${months} Bulan`;
+        if (months === 0) return `${years} Tahun`;
+        return `${years} Tahun ${months} Bulan`;
+    };
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         let finalValue: any = value;
@@ -145,12 +160,7 @@ export default function MemberCreate() {
         setFormValues(prev => {
             const newState = { ...prev, [name]: finalValue };
             if (name === 'date_of_birth') {
-                if (value) {
-                    const calculatedAge = dayjs().diff(dayjs(value), 'year');
-                    newState.age = calculatedAge;
-                } else {
-                    newState.age = 0;
-                }
+                newState.age = value ? formatAge(value) : '-';
             }
             return newState;
         });
@@ -158,7 +168,7 @@ export default function MemberCreate() {
 
     const handleSelectFamily = (family: Familys) => {
         setFormValues(prev => ({ ...prev, keluarga: String(family.id) }));
-        setFamilySearch(family.name); 
+        setFamilySearch(family.name);
         setIsFamilyDropdownOpen(false);
     };
 
@@ -195,7 +205,7 @@ export default function MemberCreate() {
             const selectedKeluarga = keluargaOptions.find(k => k.id === Number(formValues.keluarga));
             const body = {
                 name: formValues.name,
-                alias: formValues.alias, 
+                alias: formValues.alias,
                 date_of_birth: formValues.date_of_birth,
                 gender: formValues.gender,
                 level: formValues.education,
@@ -211,9 +221,9 @@ export default function MemberCreate() {
 
             // Sukses toast update
             toast.success('Data berhasil disimpan', { id: toastId });
-            
-            setFormValues(INITIAL_FORM_VALUES); 
-            setFamilySearch(''); 
+
+            setFormValues(INITIAL_FORM_VALUES);
+            setFamilySearch('');
             window.scrollTo({ top: 0, behavior: 'smooth' });
             localStorage.setItem(AUTH_KEY, Date.now().toString());
 
@@ -231,7 +241,7 @@ export default function MemberCreate() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in">
                 {/* 5. Pasang Toaster di sini juga untuk handle error password */}
                 <Toaster position="top-center" />
-                
+
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                     <div className="bg-indigo-600 p-6 text-center">
                         <div className="mx-auto bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 backdrop-blur-md">
@@ -280,9 +290,9 @@ export default function MemberCreate() {
                             <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"><User size={18} /></div>
                             Identitas Personal
                         </h3>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            
+
                             <div className="md:col-span-1">
                                 <Label required>Nama Lengkap</Label>
                                 <input type="text" name="name" value={formValues.name} onChange={handleChange} placeholder="Sesuai KTP / KK" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
@@ -291,13 +301,13 @@ export default function MemberCreate() {
                             <div className="md:col-span-1">
                                 <Label>Nama Panggilan (Alias)</Label>
                                 <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        name="alias" 
-                                        value={formValues.alias} 
-                                        onChange={handleChange} 
-                                        placeholder="Nama panggilan..." 
-                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                    <input
+                                        type="text"
+                                        name="alias"
+                                        value={formValues.alias}
+                                        onChange={handleChange}
+                                        placeholder="Nama panggilan..."
+                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
                                     />
                                     <Tag className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                 </div>
@@ -307,23 +317,23 @@ export default function MemberCreate() {
                             <div className="md:col-span-2" ref={familyDropdownRef}>
                                 <Label required>Kepala Keluarga (KK)</Label>
                                 <div className="relative">
-                                    <div 
+                                    <div
                                         className="relative flex items-center"
                                         onClick={() => {
-                                            if(!loadingKeluarga) setIsFamilyDropdownOpen(true)
+                                            if (!loadingKeluarga) setIsFamilyDropdownOpen(true)
                                         }}
                                     >
                                         <div className="absolute left-4 text-slate-400">
-                                            {loadingKeluarga ? <Loader2 className="animate-spin" size={18}/> : <Search size={18} />}
+                                            {loadingKeluarga ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
                                         </div>
-                                        <input 
+                                        <input
                                             type="text"
                                             placeholder={loadingKeluarga ? "Memuat data..." : "Ketik untuk mencari keluarga..."}
                                             value={familySearch}
                                             onChange={(e) => {
                                                 setFamilySearch(e.target.value);
                                                 setIsFamilyDropdownOpen(true);
-                                                if (formValues.keluarga) setFormValues(prev => ({...prev, keluarga: ''})); 
+                                                if (formValues.keluarga) setFormValues(prev => ({ ...prev, keluarga: '' }));
                                             }}
                                             onFocus={() => setIsFamilyDropdownOpen(true)}
                                             className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -343,7 +353,7 @@ export default function MemberCreate() {
                                         <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
                                             {filteredKeluarga.length > 0 ? (
                                                 filteredKeluarga.map(family => (
-                                                    <div 
+                                                    <div
                                                         key={family.id}
                                                         onClick={() => handleSelectFamily(family)}
                                                         className={`px-4 py-3 cursor-pointer hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-0 flex items-center justify-between
@@ -366,14 +376,14 @@ export default function MemberCreate() {
 
                             <div>
                                 <Label required>Tanggal Lahir</Label>
-                                <div className="relative">
-                                    <input type="date" name="date_of_birth" value={formValues.date_of_birth} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                </div>
+                                <CustomDatePicker
+                                    value={formValues.date_of_birth}
+                                    onChange={(val: string) => handleChange({ target: { name: 'date_of_birth', value: val, type: 'text' } } as any)}
+                                />
                             </div>
                             <div>
                                 <Label>Umur (Otomatis)</Label>
-                                <input type="text" value={formValues.age ? `${formValues.age} Tahun` : '-'} readOnly className="w-full px-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 outline-none" />
+                                <input type="text" value={formValues.age} readOnly className="w-full px-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 outline-none" />
                             </div>
                             <div>
                                 <Label required>Jenis Kelamin</Label>
