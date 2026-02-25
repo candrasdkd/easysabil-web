@@ -51,9 +51,30 @@ export default function Dashboard({ loading, members, listFamily }: DashboardPro
     const totalBinaan = members.filter(m => m.is_educate).length;
 
     // --- Actions ---
+    const getSummaryText = () => {
+        return `*📊 LAPORAN DATA SAAT INI*
+
+*JUMLAH JAMA'AH*
+👥 Total Keseluruhan: ${total} orang
+• Laki-laki: ${totalLaki} orang
+• Perempuan: ${totalPerempuan} orang
+
+*KETERANGAN TAMBAHAN*
+🏠 Jumlah Kepala Keluarga (KK): ${totalKepalaKeluarga} KK
+❤️ Warga Duafa: ${totalDuafa} orang
+👩 Ibu Janda: ${totalJanda} orang
+👨 Bapak Duda: ${totalDuda} orang
+🎓 Anggota Binaan: ${totalBinaan} orang
+
+*TINGKAT JENJANG*
+${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
+   (Laki-laki: ${data.laki} orang, Perempuan: ${data.perempuan} orang)`).join('\n\n')}
+`;
+    };
+
     const handleCopy = () => {
-        copy(`📊 Update Data: Total ${total} Anggota, ${totalKepalaKeluarga} KK.`);
-        alert('Ringkasan disalin!');
+        copy(getSummaryText());
+        alert('Seluruh ringkasan data disalin!');
     };
 
     if (loading) return <DashboardSkeleton />;
@@ -77,7 +98,7 @@ export default function Dashboard({ loading, members, listFamily }: DashboardPro
                         <Copy size={16} /> Salin Ringkasan
                     </button>
                     <button
-                        onClick={() => window.open(`https://wa.me/?text=Cek Dashboard Total ${total}`)}
+                        onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(getSummaryText())}`)}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all text-sm font-medium shadow-md shadow-indigo-200"
                     >
                         <Share2 size={16} /> Bagikan
