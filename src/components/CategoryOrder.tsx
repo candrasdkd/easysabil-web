@@ -154,7 +154,7 @@ export default function OrderCategoryScreen() {
                 <button
                     onClick={fetchData}
                     disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 hover:text-indigo-600 transition-all shadow-sm disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm disabled:opacity-50"
                 >
                     <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                     <span>Refresh</span>
@@ -165,7 +165,7 @@ export default function OrderCategoryScreen() {
                 {/* Loading State */}
                 {loading && (
                     <div className="flex flex-col items-center justify-center py-20">
-                        <Loader2 className="animate-spin text-indigo-600 mb-4" size={40} />
+                        <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
                         <p className="text-slate-500 font-medium">Memuat kategori...</p>
                     </div>
                 )}

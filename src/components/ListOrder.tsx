@@ -279,11 +279,11 @@ const OrderListPage: React.FC = () => {
                         placeholder="Cari nama pemesan..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm text-lg"
+                        className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm text-lg"
                     />
                 </div>
 
-                {loading && <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>}
+                {loading && <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>}
                 {error && <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-700 flex items-center gap-3"><AlertCircle /> {error}</div>}
 
                 {!loading && (

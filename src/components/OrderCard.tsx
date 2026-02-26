@@ -34,13 +34,13 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
                         onClick={() => onEdit(order)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                     >
                         <Edit2 size={16} />
                     </button>
                     <button
                         onClick={() => onEdit(order)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                     >
                         <Edit2 size={16} />
                     </button>
@@ -60,7 +60,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Jumlah</span>
-                    <span className="font-bold text-indigo-600 bg-indigo-50 px-2 rounded-lg">{order.total_order} pcs</span>
+                    <span className="font-bold text-blue-600 bg-blue-50 px-2 rounded-lg">{order.total_order} pcs</span>
                 </div>
                 <div className="pt-2 border-t border-slate-100 flex justify-between items-end">
                     <div>

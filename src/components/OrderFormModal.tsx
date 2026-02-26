@@ -50,7 +50,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                         <label className="text-sm font-bold text-slate-700">Nama Pemesan</label>
                         <div className="relative">
                             <div
-                                className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 cursor-pointer focus-within:border-indigo-500 focus-within:bg-white transition-all"
+                                className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 cursor-pointer focus-within:border-blue-500 focus-within:bg-white transition-all"
                                 onClick={() => setIsMemberDropdownOpen(!isMemberDropdownOpen)}
                             >
                                 <Search className="text-slate-400 mr-3" size={18} />
@@ -69,7 +69,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                                     {filteredMembers.length > 0 ? filteredMembers.map(m => (
                                         <div
                                             key={m.id}
-                                            className="px-4 py-3 hover:bg-indigo-50 cursor-pointer flex items-center justify-between border-b border-slate-50 last:border-0"
+                                            className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex items-center justify-between border-b border-slate-50 last:border-0"
                                             onClick={() => {
                                                 setDataUpload({ ...dataUpload, user: { label: m.label, value: m.label, id: String(m.id) } });
                                                 setMemberSearch(m.label);
@@ -77,7 +77,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                                             }}
                                         >
                                             <span className="font-medium text-slate-700">{m.label}</span>
-                                            {dataUpload.user.id === String(m.id) && <CheckCircle2 className="text-indigo-600" size={16} />}
+                                            {dataUpload.user.id === String(m.id) && <CheckCircle2 className="text-blue-600" size={16} />}
                                         </div>
                                     )) : <div className="px-4 py-6 text-center text-slate-400 text-sm italic">Nama tidak ditemukan</div>}
                                 </div>
@@ -90,7 +90,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                         <label className="text-sm font-bold text-slate-700">Kategori Pesanan</label>
                         <div className="relative">
                             <select
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all appearance-none cursor-pointer"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:border-blue-500 focus:bg-white transition-all appearance-none cursor-pointer"
                                 value={dataUpload.category.id}
                                 onChange={(e) => {
                                     const selected = dataDropdownCategory.find(cat => String(cat.id) === e.target.value);
@@ -123,7 +123,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                             <input
                                 type="number"
                                 placeholder="0"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none focus:border-blue-500 focus:bg-white transition-all"
                                 value={dataUpload.totalOrder}
                                 onChange={(e) => setDataUpload({ ...dataUpload, totalOrder: e.target.value })}
                             />
@@ -140,7 +140,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                         <label className="text-sm font-bold text-slate-700">Catatan (Opsional)</label>
                         <textarea
                             placeholder="Contoh: Ukuran L, Tanpa Sambal, dsb."
-                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all min-h-[80px]"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-medium outline-none focus:border-blue-500 focus:bg-white transition-all min-h-[80px]"
                             value={dataUpload.note}
                             onChange={(e) => setDataUpload({ ...dataUpload, note: e.target.value })}
                         />
@@ -169,7 +169,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                                     <label className="text-sm font-bold text-slate-700">Diterima Ke (Holder)</label>
                                     <div className="relative">
                                         <select
-                                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                                             value={dataUpload.moneyHolder}
                                             onChange={(e) => setDataUpload({ ...dataUpload, moneyHolder: e.target.value })}
                                         >
@@ -223,7 +223,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                     <button
                         disabled={uploading}
                         onClick={onSave}
-                        className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
+                        className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
                     >
                         {uploading ? "Menyimpan..." : (isUpdate ? "Simpan Perubahan" : "Buat Pesanan")}
                     </button>

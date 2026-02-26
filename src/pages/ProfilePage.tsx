@@ -8,7 +8,7 @@ export default function ProfilePage() {
     if (!profile) return null;
 
     const statusLabel = STATUS_LABELS[profile.status] ?? 'Unknown';
-    const statusColor = profile.status <= 1 ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700';
+    const statusColor = profile.status <= 1 ? 'bg-blue-100 text-blue-700' : 'bg-blue-100 text-blue-700';
 
     const fields = [
         {
@@ -45,7 +45,7 @@ export default function ProfilePage() {
         <div className="min-h-screen bg-gray-50 flex items-start justify-center pt-10 px-4">
             <div className="w-full max-w-lg animate-fade-up">
                 {/* Header Card */}
-                <div className="bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 rounded-2xl p-8 text-center relative overflow-hidden mb-6 shadow-xl shadow-indigo-200">
+                <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-slate-700 rounded-2xl p-8 text-center relative overflow-hidden mb-6 shadow-xl shadow-blue-200">
                     <div className="absolute top-[-40px] right-[-40px] w-40 h-40 bg-white/5 rounded-full animate-float-a" />
                     <div className="absolute bottom-[-30px] left-[-30px] w-32 h-32 bg-white/5 rounded-full animate-float-b" />
 
@@ -53,7 +53,7 @@ export default function ProfilePage() {
                         <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-white/30 shadow-lg">
                             <User size={36} className="text-white" />
                         </div>
-                        <p className="text-indigo-200 text-sm font-medium">{statusLabel}</p>
+                        <p className="text-blue-200 text-sm font-medium">{statusLabel}</p>
                         <h1 className="text-xl font-bold text-white mt-1 break-all">{profile.email}</h1>
                     </div>
                 </div>

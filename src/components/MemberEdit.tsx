@@ -274,7 +274,7 @@ export default function MemberEdit() {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50">
                 <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="animate-spin text-indigo-600" size={32} />
+                    <Loader2 className="animate-spin text-blue-600" size={32} />
                     <p className="text-slate-500 font-medium">Sedang mengambil data member...</p>
                 </div>
             </div>
@@ -316,7 +316,7 @@ export default function MemberEdit() {
                                     value={formValues.name}
                                     onChange={handleChange}
                                     placeholder="Sesuai KTP / KK"
-                                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
                             </div>
 
@@ -329,7 +329,7 @@ export default function MemberEdit() {
                                         value={formValues.alias}
                                         onChange={handleChange}
                                         placeholder="Nama panggilan..."
-                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
                                     />
                                     <Tag className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                 </div>
@@ -355,7 +355,7 @@ export default function MemberEdit() {
                                                 if (formValues.family_id) setFormValues(prev => ({ ...prev, family_id: '' }));
                                             }}
                                             onFocus={() => setIsFamilyDropdownOpen(true)}
-                                            className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
                                         />
                                         <div className="absolute right-3 flex items-center gap-1">
                                             {formValues.family_id && (
@@ -373,12 +373,12 @@ export default function MemberEdit() {
                                                     <div
                                                         key={family.id}
                                                         onClick={() => handleSelectFamily(family)}
-                                                        className={`px-4 py-3 cursor-pointer hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-0 flex items-center justify-between
-                                                            ${String(family.id) === formValues.family_id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'}
+                                                        className={`px-4 py-3 cursor-pointer hover:bg-blue-50 transition-colors border-b border-slate-50 last:border-0 flex items-center justify-between
+                                                            ${String(family.id) === formValues.family_id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'}
                                                         `}
                                                     >
                                                         {family.name}
-                                                        {String(family.id) === formValues.family_id && <Users size={16} className="text-indigo-600" />}
+                                                        {String(family.id) === formValues.family_id && <Users size={16} className="text-blue-600" />}
                                                     </div>
                                                 ))
                                             ) : (
@@ -403,7 +403,7 @@ export default function MemberEdit() {
                             <div>
                                 <Label required>Jenis Kelamin</Label>
                                 <div className="relative">
-                                    <select name="gender" value={formValues.gender} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none pr-10">
+                                    <select name="gender" value={formValues.gender} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
                                         <option value="">-- Pilih --</option>
                                         <option value="Laki - Laki">Laki - Laki</option>
                                         <option value="Perempuan">Perempuan</option>
@@ -424,7 +424,7 @@ export default function MemberEdit() {
                             <div>
                                 <Label required>Jenjang Pembinaan</Label>
                                 <div className="relative">
-                                    <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none pr-10">
+                                    <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
                                         <option value="">-- Pilih Jenjang --</option>
                                         <option value="Batita">Batita (0-3 Tahun)</option>
                                         <option value="Paud">Paud (3-5 Tahun)</option>
@@ -443,7 +443,7 @@ export default function MemberEdit() {
                                 <Label required>Status Pernikahan</Label>
                                 <div className="relative">
                                     <Heart className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                    <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none">
+                                    <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none">
                                         <option value="">-- Pilih Status --</option>
                                         <option value="Belum Menikah">Belum Menikah</option>
                                         <option value="Menikah">Menikah</option>
@@ -464,7 +464,7 @@ export default function MemberEdit() {
                                         value={formValues.order ?? ''}
                                         onChange={handleChange}
                                         placeholder="Contoh: 1 (Kepala Keluarga), 2 (Istri), dst"
-                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
                                     />
                                     <ListOrdered className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                 </div>
@@ -472,8 +472,8 @@ export default function MemberEdit() {
                             {/* -------------------- */}
 
                             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
-                                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl bg-white cursor-pointer hover:border-indigo-300 transition-colors">
-                                    <input type="checkbox" name="is_educate" checked={formValues.is_educate} onChange={handleChange} className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300" />
+                                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl bg-white cursor-pointer hover:border-blue-300 transition-colors">
+                                    <input type="checkbox" name="is_educate" checked={formValues.is_educate} onChange={handleChange} className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" />
                                     <div>
                                         <span className="font-semibold text-slate-800 block text-sm">Status Binaan</span>
                                         <span className="text-xs text-slate-500">Masih sekolah/binaan</span>
@@ -505,7 +505,7 @@ export default function MemberEdit() {
 
                     <div className="p-6 sm:p-8 border-t border-slate-100 bg-white flex flex-col-reverse sm:flex-row justify-end gap-3">
                         <button type="button" onClick={() => window.history.back()} className="px-6 py-3 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors">Batal</button>
-                        <button type="submit" disabled={isSubmitting} className="px-8 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} Update Data</button>
+                        <button type="submit" disabled={isSubmitting} className="px-8 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">{isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} Update Data</button>
                     </div>
                 </form>
             </div>

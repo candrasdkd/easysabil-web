@@ -45,9 +45,9 @@ const OrderSummaryModal: React.FC<OrderSummaryModalProps> = ({ stats, onClose })
                             <p className="text-[10px] uppercase font-bold text-amber-500 mb-1">Hutang</p>
                             <p className="text-xl font-black text-amber-700">{stats.unpaidOrders}</p>
                         </div>
-                        <div className="p-4 bg-indigo-50 rounded-3xl text-center border border-indigo-100">
-                            <p className="text-[10px] uppercase font-bold text-indigo-500 mb-1">Rate</p>
-                            <p className="text-xl font-black text-indigo-700">{stats.paymentRate.toFixed(0)}%</p>
+                        <div className="p-4 bg-blue-50 rounded-3xl text-center border border-blue-100">
+                            <p className="text-[10px] uppercase font-bold text-blue-500 mb-1">Rate</p>
+                            <p className="text-xl font-black text-blue-700">{stats.paymentRate.toFixed(0)}%</p>
                         </div>
                     </div>
 
@@ -113,7 +113,7 @@ const OrderSummaryModal: React.FC<OrderSummaryModalProps> = ({ stats, onClose })
                                         return (
                                             <div key={holder} className="flex items-center justify-between pb-4 border-b border-slate-200 last:border-0 last:pb-0">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${amount > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${amount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
                                                         {holder.charAt(0)}
                                                     </div>
                                                     <span className={`font-medium ${amount > 0 ? 'text-slate-800' : 'text-slate-400'}`}>{holder}</span>
@@ -127,7 +127,7 @@ const OrderSummaryModal: React.FC<OrderSummaryModalProps> = ({ stats, onClose })
                                 </div>
                                 <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-center">
                                     <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">Total Terpegang</span>
-                                    <span className="text-lg font-black text-indigo-700">{formatRupiah(stats.totalReceived)}</span>
+                                    <span className="text-lg font-black text-blue-700">{formatRupiah(stats.totalReceived)}</span>
                                 </div>
                             </div>
                         </div>

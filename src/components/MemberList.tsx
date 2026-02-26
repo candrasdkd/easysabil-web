@@ -49,7 +49,7 @@ const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' 
         green: 'bg-emerald-100 text-emerald-700 border-emerald-200',
         red: 'bg-rose-100 text-rose-700 border-rose-200',
         gray: 'bg-slate-100 text-slate-600 border-slate-200',
-        blue: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+        blue: 'bg-blue-100 text-blue-700 border-blue-200',
     };
     return (
         <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${colors[color]}`}>
@@ -426,8 +426,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const SortIcon = ({ columnKey }: { columnKey: keyof Member }) => {
         if (sortConfig.key !== columnKey) return <ArrowUpDown size={14} className="text-slate-400 opacity-50" />;
         return sortConfig.direction === 'asc'
-            ? <ArrowUp size={14} className="text-indigo-600" />
-            : <ArrowDown size={14} className="text-indigo-600" />;
+            ? <ArrowUp size={14} className="text-blue-600" />
+            : <ArrowDown size={14} className="text-blue-600" />;
     };
 
     return (
@@ -449,7 +449,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     </button>
                     <button
                         onClick={() => navigate('/members/new')}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 shadow-md shadow-blue-200 transition-all"
                     >
                         <Plus size={18} /> Tambah Anggota
                     </button>
@@ -467,7 +467,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             setSearchText(e.target.value);
                             setCurrentPage(1);
                         }}
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     />
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 </div>
@@ -477,7 +477,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         onClick={() => setIsFilterOpen(true)}
                         className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
                             ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily)
-                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                ? 'bg-blue-50 border-blue-200 text-blue-700'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
                         <Filter size={18} /> Filter
@@ -531,7 +531,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             {paginatedMembers.length > 0 ? paginatedMembers.map((row) => (
                                 <tr
                                     key={row.uuid}
-                                    className="hover:bg-indigo-50 transition-colors cursor-pointer group"
+                                    className="hover:bg-blue-50 transition-colors cursor-pointer group"
                                     onClick={() => navigate(`/members/${row.uuid}`)}
                                 >
                                     <td className="px-6 py-4 font-medium text-slate-900">
@@ -552,13 +552,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
 
                                     <td
-                                        className="px-6 py-4 text-center sticky right-0 z-20 bg-white group-hover:bg-indigo-50 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]"
+                                        className="px-6 py-4 text-center sticky right-0 z-20 bg-white group-hover:bg-blue-50 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]"
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <div className="flex justify-center gap-1">
                                             <button
                                                 onClick={() => navigate(`/members/${row.uuid}/edit`)}
-                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors"
+                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-colors"
                                                 title="Edit"
                                             >
                                                 <Edit size={16} />
@@ -598,7 +598,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             <select
                                 value={pageSize}
                                 onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                                className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg pl-3 pr-8 py-2 outline-none focus:border-indigo-500 cursor-pointer"
+                                className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg pl-3 pr-8 py-2 outline-none focus:border-blue-500 cursor-pointer"
                             >
                                 <option value={15}>15 baris</option>
                                 <option value={30}>30 baris</option>
@@ -637,7 +637,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Filter size={18} className="text-indigo-600" /> Filter Data</h3>
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Filter size={18} className="text-blue-600" /> Filter Data</h3>
                             <button onClick={() => setIsFilterOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={20} /></button>
                         </div>
 
@@ -650,7 +650,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     <select
                                         value={memberStatus}
                                         onChange={(e) => setMemberStatus(e.target.value as any)}
-                                        className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
+                                        className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
                                     >
                                         <option value="Aktif">Aktif Saja</option>
                                         <option value="Tidak Aktif">Tidak Aktif Saja</option>
@@ -682,7 +682,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                                 if (!isFamilyDropdownOpen) setIsFamilyDropdownOpen(true);
                                             }}
                                             onFocus={() => setIsFamilyDropdownOpen(true)}
-                                            className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-slate-700 placeholder:text-slate-400"
+                                            className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 placeholder:text-slate-400"
                                         />
                                         {selectedFamily || familySearchKeyword ? (
                                             <button
@@ -716,7 +716,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                                     <div
                                                         key={family.id}
                                                         className={`px-4 py-3 cursor-pointer flex items-center justify-between transition-colors
-                                                            ${selectedFamily === family.name ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
+                                                            ${selectedFamily === family.name ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
                                                         onClick={() => {
                                                             setSelectedFamily(family.name);
                                                             setFamilySearchKeyword(family.name);
@@ -724,7 +724,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                                         }}
                                                     >
                                                         <span>{family.name}</span>
-                                                        {selectedFamily === family.name && <Check size={16} className="text-indigo-600" />}
+                                                        {selectedFamily === family.name && <Check size={16} className="text-blue-600" />}
                                                     </div>
                                                 ))
                                             ) : (
@@ -742,7 +742,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Jenis Kelamin</label>
                                 <div className="flex gap-3">
                                     {['Laki - Laki', 'Perempuan'].map(g => (
-                                        <label key={g} className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 border rounded-xl transition-all ${selectedGender.includes(g) ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium' : 'hover:bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                        <label key={g} className={`flex-1 flex items-center justify-center gap-2 cursor-pointer p-3 border rounded-xl transition-all ${selectedGender.includes(g) ? 'bg-blue-50 border-blue-200 text-blue-700 font-medium' : 'hover:bg-slate-50 border-slate-200 text-slate-600'}`}>
                                             <input
                                                 type="checkbox"
                                                 checked={selectedGender.includes(g)}
@@ -763,7 +763,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Jenjang Pendidikan</label>
                                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                                     {Array.from(new Set(members.map(m => m.level))).filter(Boolean).sort().map(lvl => (
-                                        <label key={lvl} className={`flex items-center gap-2 cursor-pointer p-2.5 border rounded-lg transition-colors ${selectedLevel.includes(lvl) ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-slate-50 border-slate-200'}`}>
+                                        <label key={lvl} className={`flex items-center gap-2 cursor-pointer p-2.5 border rounded-lg transition-colors ${selectedLevel.includes(lvl) ? 'bg-blue-50 border-blue-200' : 'hover:bg-slate-50 border-slate-200'}`}>
                                             <input
                                                 type="checkbox"
                                                 checked={selectedLevel.includes(lvl)}
@@ -771,9 +771,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                                     if (e.target.checked) setSelectedLevel([...selectedLevel, lvl]);
                                                     else setSelectedLevel(selectedLevel.filter(x => x !== lvl));
                                                 }}
-                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                                             />
-                                            <span className={`text-sm ${selectedLevel.includes(lvl) ? 'text-indigo-700 font-medium' : 'text-slate-600'}`}>{lvl}</span>
+                                            <span className={`text-sm ${selectedLevel.includes(lvl) ? 'text-blue-700 font-medium' : 'text-slate-600'}`}>{lvl}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -789,7 +789,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             </button>
                             <button
                                 onClick={() => setIsFilterOpen(false)}
-                                className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
                             >
                                 Terapkan
                             </button>

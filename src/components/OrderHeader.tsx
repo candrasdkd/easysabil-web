@@ -22,7 +22,7 @@ const OrderHeader: React.FC<OrderHeaderProps> = ({
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                            <ShoppingBag className="text-indigo-600" /> Daftar Pesanan
+                            <ShoppingBag className="text-blue-600" /> Daftar Pesanan
                         </h1>
                         <p className="text-slate-500 text-sm mt-1">
                             {categoryLabel || "Semua Kategori"} • {dataCount} Data
@@ -45,7 +45,7 @@ const OrderHeader: React.FC<OrderHeaderProps> = ({
                         </button>
                         <button
                             onClick={onAddOrder}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
                         >
                             <Plus size={18} /> Tambah
                         </button>

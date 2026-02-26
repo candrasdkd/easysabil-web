@@ -174,7 +174,7 @@ export default function AdminUsersPage() {
                 {isSuperAdmin && (
                     <button
                         onClick={() => setShowModal(true)}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow hover:bg-indigo-700"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700"
                     >
                         + Buat Akun Baru
                     </button>
@@ -201,14 +201,14 @@ export default function AdminUsersPage() {
                                         <select
                                             value={user.status}
                                             onChange={(e) => handleChangeStatus(user.uid, Number(e.target.value))}
-                                            className="mt-1 block w-full pl-3 pr-8 py-1 text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md"
+                                            className="mt-1 block w-full pl-3 pr-8 py-1 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
                                         >
                                             {Object.entries(STATUS_LABELS).map(([val, label]) => (
                                                 <option key={val} value={Number(val)}>{label}</option>
                                             ))}
                                         </select>
                                     ) : (
-                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 1 ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 1 ? 'bg-blue-100 text-blue-800' : 'bg-blue-100 text-blue-800'}`}>
                                             {STATUS_LABELS[user.status] || 'Unknown'}
                                         </span>
                                     )}
@@ -257,7 +257,7 @@ export default function AdminUsersPage() {
                                             required
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border"
+                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border"
                                         />
                                     </div>
                                     <div>
@@ -268,7 +268,7 @@ export default function AdminUsersPage() {
                                             minLength={6}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border"
+                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border"
                                         />
                                     </div>
                                     <div>
@@ -277,7 +277,7 @@ export default function AdminUsersPage() {
                                             required
                                             value={status}
                                             onChange={(e) => setStatus(Number(e.target.value))}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border"
+                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border"
                                         >
                                             {Object.entries(STATUS_LABELS).map(([val, label]) => (
                                                 <option key={val} value={Number(val)}>{label}</option>
@@ -290,7 +290,7 @@ export default function AdminUsersPage() {
                                             required
                                             value={kelompok}
                                             onChange={(e) => setKelompok(e.target.value)}
-                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border"
+                                            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-3 py-2 border"
                                         >
                                             <option value="" disabled>Pilih Kelompok</option>
                                             <option value="Kelompok 1">Kelompok 1</option>
@@ -304,7 +304,7 @@ export default function AdminUsersPage() {
                                         <button
                                             type="submit"
                                             disabled={isCreating}
-                                            className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                                            className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                                         >
                                             {isCreating ? 'Membuat...' : 'Buat Akun'}
                                         </button>
@@ -312,7 +312,7 @@ export default function AdminUsersPage() {
                                             type="button"
                                             onClick={() => setShowModal(false)}
                                             disabled={isCreating}
-                                            className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                            className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                                         >
                                             Batal
                                         </button>

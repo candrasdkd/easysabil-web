@@ -137,7 +137,7 @@ export default function FamiliesPage() {
         return matchSearch && matchKelompok && matchRole;
     });
 
-    const inputClass = "w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm";
+    const inputClass = "w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all text-sm";
 
     return (
         <div className="p-6 max-w-5xl mx-auto">
@@ -150,7 +150,7 @@ export default function FamiliesPage() {
                 {canEdit && (
                     <button
                         onClick={openCreate}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm shadow-md shadow-indigo-200 transition-all"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-md shadow-blue-200 transition-all"
                     >
                         <Plus size={16} /> Tambah Keluarga
                     </button>
@@ -186,7 +186,7 @@ export default function FamiliesPage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 {loading ? (
                     <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
-                        <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mr-3" />
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" />
                         Memuat data...
                     </div>
                 ) : displayed.length === 0 ? (
@@ -210,7 +210,7 @@ export default function FamiliesPage() {
                                     <td className="px-6 py-3.5 text-sm text-slate-400 w-12">{i + 1}</td>
                                     <td className="px-6 py-3.5 text-sm font-medium text-slate-800">{f.name}</td>
                                     <td className="px-6 py-3.5 text-sm text-slate-500">
-                                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+                                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
                                             {f.kelompok || '-'}
                                         </span>
                                     </td>
@@ -219,7 +219,7 @@ export default function FamiliesPage() {
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
                                                     onClick={() => openEdit(f)}
-                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                                     title="Edit"
                                                 >
                                                     <Pencil size={15} />
@@ -305,7 +305,7 @@ export default function FamiliesPage() {
                                 <button
                                     type="submit"
                                     disabled={saving}
-                                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-md shadow-indigo-200"
+                                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-60 shadow-md shadow-blue-200"
                                 >
                                     {saving
                                         ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

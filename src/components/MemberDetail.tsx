@@ -32,7 +32,7 @@ dayjs.locale('id');
 
 // --- Helper Component: Detail Item ---
 const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: any, label: string, value: React.ReactNode, subValue?: string }) => (
-    <div className="flex items-start gap-4 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl hover:border-indigo-100 transition-colors">
+    <div className="flex items-start gap-4 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl hover:border-blue-100 transition-colors">
         <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 shadow-sm">
             <Icon size={20} />
         </div>
@@ -47,12 +47,12 @@ const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: any, label: 
 // --- Helper Component: Badge ---
 const StatusBadge = ({ active, activeText, inactiveText, color }: any) => {
     const bg = active
-        ? (color === 'green' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-indigo-100 text-indigo-700 border-indigo-200')
+        ? (color === 'green' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-blue-100 text-blue-700 border-blue-200')
         : 'bg-slate-100 text-slate-500 border-slate-200';
 
     return (
         <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${bg}`}>
-            <div className={`w-1.5 h-1.5 rounded-full ${active ? (color === 'green' ? 'bg-emerald-500' : 'bg-indigo-500') : 'bg-slate-400'}`}></div>
+            <div className={`w-1.5 h-1.5 rounded-full ${active ? (color === 'green' ? 'bg-emerald-500' : 'bg-blue-500') : 'bg-slate-400'}`}></div>
             {active ? activeText : inactiveText}
         </div>
     );
@@ -129,7 +129,7 @@ export default function MemberShow() {
     if (isLoading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-3">
-                <Loader2 className="animate-spin text-indigo-600" size={32} />
+                <Loader2 className="animate-spin text-blue-600" size={32} />
                 <p className="text-slate-500 font-medium">Memuat data anggota...</p>
             </div>
         );
@@ -159,7 +159,7 @@ export default function MemberShow() {
                         <h1 className="text-2xl font-bold text-slate-900">{member.name}</h1>
                         <p className="text-sm text-slate-500 flex items-center gap-2">
                             {pageTitle}
-                            {member.alias && <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-xs font-bold border border-indigo-100">Alias: {member.alias}</span>}
+                            {member.alias && <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs font-bold border border-blue-100">Alias: {member.alias}</span>}
                         </p>
                     </div>
                 </div>
@@ -167,7 +167,7 @@ export default function MemberShow() {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => executeAction('edit')}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 hover:border-indigo-200 hover:text-indigo-700 transition-all shadow-sm"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 hover:border-blue-200 hover:text-blue-700 transition-all shadow-sm"
                     >
                         <Edit size={18} /> <span className="hidden sm:inline">Edit</span>
                     </button>
@@ -187,7 +187,7 @@ export default function MemberShow() {
                 <div className="lg:col-span-2 space-y-6">
                     <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
                                 <User size={24} />
                             </div>
                             <h2 className="text-xl font-bold text-slate-800">Informasi Personal</h2>
@@ -275,7 +275,7 @@ export default function MemberShow() {
                             {/* Is Binaan */}
                             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                 <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-xl ${member.is_educate ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-500'}`}>
+                                    <div className={`p-2 rounded-xl ${member.is_educate ? 'bg-blue-100 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>
                                         <BookOpen size={20} />
                                     </div>
                                     <div>

@@ -17,7 +17,7 @@ dayjs.locale('id');
 const CATEGORIES = [
     { id: 'Bapak-Bapak', label: 'Bapak-Bapak', color: 'blue' },
     { id: 'Ibu-Ibu', label: 'Ibu-Ibu', color: 'red' },
-    { id: 'Muda/i Laki-laki', label: 'Muda Putra', color: 'indigo' },
+    { id: 'Muda/i Laki-laki', label: 'Muda Putra', color: 'blue' },
     { id: 'Muda/i Perempuan', label: 'Muda Putri', color: 'rose' },
 ];
 
@@ -291,7 +291,7 @@ export default function MonthlyAttendance() {
 const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any) => {
     // Style border header sesuai warna kategori
     const borderClass = {
-        blue: 'border-blue-500', red: 'border-red-500', indigo: 'border-indigo-500', rose: 'border-rose-500'
+        blue: 'border-blue-500', red: 'border-red-500', rose: 'border-rose-500'
     }[color as string] || 'border-slate-500';
 
     return (
@@ -359,8 +359,8 @@ const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any)
                                         desktopClass = "md:bg-amber-100 md:text-amber-700 md:font-bold";
                                         desktopText = "I";
                                     } else if (status === 'S') {
-                                        mobileContent = <div className="w-8 h-8 rounded-full bg-purple-100 border border-purple-200 text-purple-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">S</div>;
-                                        desktopClass = "md:bg-purple-100 md:text-purple-700 md:font-bold";
+                                        mobileContent = <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 text-blue-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">S</div>;
+                                        desktopClass = "md:bg-blue-100 md:text-blue-700 md:font-bold";
                                         desktopText = "S";
                                     } else if (status === 'A') {
                                         mobileContent = <div className="w-8 h-8 rounded-full bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">A</div>;

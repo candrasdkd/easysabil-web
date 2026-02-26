@@ -62,7 +62,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                                     <input
                                         type="number"
                                         placeholder="Contoh: 50000"
-                                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xl text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xl text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all"
                                         value={actualPricePay}
                                         onChange={(e) => setActualPricePay(e.target.value)}
                                         autoFocus

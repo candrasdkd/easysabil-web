@@ -41,7 +41,7 @@ const OrderFilterModal: React.FC<OrderFilterModalProps> = ({
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Kategori</label>
                         <div className="relative">
                             <select
-                                className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium appearance-none cursor-pointer"
+                                className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-medium appearance-none cursor-pointer"
                                 value={categoryLabel}
                                 onChange={(e) => {
                                     const selected = dataDropdownCategory.find(c => c.value === e.target.value);
@@ -66,7 +66,7 @@ const OrderFilterModal: React.FC<OrderFilterModalProps> = ({
                                 <button
                                     key={s.label}
                                     onClick={() => onPaymentStatusChange(s.val)}
-                                    className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all ${isPayment === s.val ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                    className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all ${isPayment === s.val ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                                 >
                                     {s.label}
                                 </button>

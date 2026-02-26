@@ -81,11 +81,11 @@ export default function Navbar() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
                     <div className="flex justify-between items-center h-full">
                         <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-md">
+                            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-blue-200 shadow-md">
                                 <Globe size={20} />
                             </div>
                             <span className="font-bold text-xl tracking-tight text-slate-800">
-                                Easy<span className="text-indigo-600">Sabil</span>
+                                Easy<span className="text-blue-600">Sabil</span>
                             </span>
                         </div>
                     </div>
@@ -107,11 +107,11 @@ export default function Navbar() {
 
                         {/* 1. BRAND */}
                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo(0, 0)}>
-                            <div className="w-9 h-9 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-md">
+                            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-blue-200 shadow-md">
                                 <Globe size={20} />
                             </div>
                             <span className="font-bold text-xl tracking-tight text-slate-800">
-                                Easy<span className="text-indigo-600">Sabil</span>
+                                Easy<span className="text-blue-600">Sabil</span>
                             </span>
                         </div>
 
@@ -127,13 +127,13 @@ export default function Navbar() {
                                             className={`
                                                 flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all duration-200
                                                 ${active
-                                                    ? 'bg-white text-indigo-700 shadow-sm border border-slate-100'
+                                                    ? 'bg-white text-blue-700 shadow-sm border border-slate-100'
                                                     : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}
                                             `}
                                         >
                                             <item.icon
                                                 size={16}
-                                                className={active ? "text-indigo-600 fill-indigo-100" : ""}
+                                                className={active ? "text-blue-600 fill-blue-100" : ""}
                                             />
                                             {item.label}
                                         </NavLink>
@@ -148,7 +148,7 @@ export default function Navbar() {
                             <button
                                 onClick={() => navigate('/profile')}
                                 title={profile?.email ?? 'Profil'}
-                                className="hidden md:flex w-9 h-9 items-center justify-center rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold text-sm transition-colors border border-indigo-200"
+                                className="hidden md:flex w-9 h-9 items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold text-sm transition-colors border border-blue-200"
                             >
                                 {profile?.email?.[0]?.toUpperCase() ?? '?'}
                             </button>
@@ -208,15 +208,15 @@ export default function Navbar() {
                                 className={`
                                     flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-medium transition-all group
                                     ${active
-                                        ? 'bg-indigo-50 text-indigo-700'
+                                        ? 'bg-blue-50 text-blue-700'
                                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}
                                 `}
                             >
                                 <div className="flex items-center gap-3">
-                                    <item.icon size={18} className={active ? "text-indigo-600" : "opacity-75"} />
+                                    <item.icon size={18} className={active ? "text-blue-600" : "opacity-75"} />
                                     {item.label}
                                 </div>
-                                {active && <ChevronRight size={16} className="text-indigo-400" />}
+                                {active && <ChevronRight size={16} className="text-blue-400" />}
                             </NavLink>
                         );
                     })}

@@ -99,7 +99,7 @@ ${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
                     </button>
                     <button
                         onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(getSummaryText())}`)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all text-sm font-medium shadow-md shadow-indigo-200"
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium shadow-md shadow-blue-200"
                     >
                         <Share2 size={16} /> Bagikan
                     </button>
@@ -117,7 +117,7 @@ ${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
 
                     <div className="relative z-10">
                         <div className="flex items-center gap-2 mb-2">
-                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
                                 <Users size={20} />
                             </div>
                             <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Total Anggota Aktif</span>
@@ -197,7 +197,7 @@ ${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
                 <div className="col-span-1 md:col-span-2 xl:col-span-4 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
-                            <GraduationCap className="text-indigo-600" size={24} /> Distribusi Pendidikan
+                            <GraduationCap className="text-blue-600" size={24} /> Distribusi Pendidikan
                         </h3>
                         <div className="flex items-center gap-3 text-xs font-medium text-slate-500">
                             <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div> Laki-laki</span>
@@ -207,7 +207,7 @@ ${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {statsByLevel.map(([level, data], idx) => (
-                            <div key={idx} className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-indigo-200 transition-colors">
+                            <div key={idx} className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-blue-200 transition-colors">
                                 {/* Header Card */}
                                 <div className="flex justify-between items-center mb-3">
                                     <span className="font-semibold text-slate-700">{level}</span>

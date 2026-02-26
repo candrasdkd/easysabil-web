@@ -15,7 +15,7 @@ export default function ProtectedRoute({ children, adminOnly = false, superAdmin
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50">
                 <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                     <div className="text-slate-600 text-sm font-medium">Memuat...</div>
                 </div>
             </div>
@@ -29,7 +29,7 @@ export default function ProtectedRoute({ children, adminOnly = false, superAdmin
     // If not active, show "pending" screen — user stays logged in but can't do anything
     if (profile && !profile.isActive) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex flex-col items-center justify-center p-6">
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col items-center justify-center p-6">
                 <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
                     <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

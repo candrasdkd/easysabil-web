@@ -4,7 +4,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, UserPlus, Globe, ChevronDown } from 'lucide-react';
+import { Eye, EyeOff, UserPlus, Globe, ChevronDown, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
     { value: 2, label: 'Pengurus Desa' },
@@ -49,75 +49,81 @@ export default function RegisterPage() {
         }
     };
 
-    const inputClass = "w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all";
+    const inputClass = "w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all text-sm";
 
     return (
-        <div className="min-h-screen flex">
-            {/* Left Panel */}
-            <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-700 relative overflow-hidden flex-col items-center justify-center p-12 animate-fade-in">
-                <div className="absolute top-[-80px] right-[-80px] w-96 h-96 bg-white/5 rounded-full animate-float-a" />
-                <div className="absolute bottom-[-60px] left-[-60px] w-72 h-72 bg-white/8 rounded-full animate-float-b" />
-                <div className="absolute top-1/3 right-1/4 w-32 h-32 bg-white/5 rounded-full animate-float-c" />
-                <div className="absolute bottom-1/3 left-1/3 w-20 h-20 bg-white/10 rounded-full animate-float-b" style={{ animationDelay: '1.5s' }} />
+        <div className="min-h-screen flex flex-col lg:flex-row bg-white">
 
+            {/* ===== TOP / LEFT HERO ===== */}
+            <div className="relative lg:w-2/5 bg-gradient-to-br from-blue-600 to-blue-900 flex flex-col items-center justify-center px-8 pt-12 pb-20 lg:pb-0 lg:py-16 overflow-hidden">
+
+                {/* Hex pattern */}
+                <svg className="absolute inset-0 w-full h-full opacity-[0.06]" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <pattern id="hex2" x="0" y="0" width="60" height="52" patternUnits="userSpaceOnUse">
+                            <polygon points="30,2 58,16 58,36 30,50 2,36 2,16" fill="none" stroke="white" strokeWidth="1.5" />
+                        </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#hex2)" />
+                </svg>
+
+                {/* Glow */}
+                <div className="absolute top-[-60px] right-[-60px] w-64 h-64 bg-blue-400/20 rounded-full blur-3xl" />
+                <div className="absolute bottom-[-40px] left-[-40px] w-48 h-48 bg-sky-400/20 rounded-full blur-3xl" />
+
+                {/* Hero content */}
                 <div className="relative z-10 text-center">
-                    <div className="w-20 h-20 bg-white/15 backdrop-blur rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl border border-white/20 animate-pulse-slow animate-fade-up">
-                        <Globe size={40} className="text-white" />
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-white/15 border border-white/25 rounded-2xl shadow-xl mb-5 backdrop-blur-sm">
+                        <Globe size={30} className="text-white" strokeWidth={1.5} />
                     </div>
-                    <h1 className="text-4xl font-bold text-white mb-4 tracking-tight animate-fade-up-delay1">
+                    <h1 className="text-3xl lg:text-4xl font-bold text-white tracking-tight mb-2">
                         Easy<span className="text-blue-200">Sabil</span>
                     </h1>
-                    <p className="text-indigo-200 text-lg max-w-xs leading-relaxed animate-fade-up-delay2">
-                        Bergabunglah dan kelola data sabil bersama kami.
+                    <p className="hidden lg:block text-blue-200/80 text-sm max-w-[220px] mx-auto leading-relaxed">
+                        Bergabunglah dan kelola data sabil bersama kami
                     </p>
 
-                    <div className="mt-12 space-y-4 text-left animate-fade-up-delay3">
+                    {/* Feature list — desktop only */}
+                    <div className="hidden lg:flex flex-col gap-3 mt-10 text-left">
                         {[
                             'Data anggota terstruktur & mudah dicari',
                             'Manajemen per kelompok & pengurus',
                             'Aktivasi akun oleh admin untuk keamanan',
-                        ].map((item, i) => (
-                            <div key={i} className="flex items-start gap-3">
-                                <div className="w-6 h-6 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                </div>
-                                <p className="text-indigo-100 text-sm">{item}</p>
+                        ].map((item) => (
+                            <div key={item} className="flex items-start gap-3">
+                                <CheckCircle2 size={16} className="text-blue-300 flex-shrink-0 mt-0.5" />
+                                <span className="text-blue-100/80 text-sm">{item}</span>
                             </div>
                         ))}
                     </div>
+
+
                 </div>
             </div>
 
-            {/* Right Panel — Register Form */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50 overflow-y-auto">
-                <div className="w-full max-w-md py-8">
-                    {/* Mobile Logo */}
-                    <div className="lg:hidden flex items-center gap-3 mb-8 justify-center animate-fade-up">
-                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl flex items-center justify-center shadow-lg">
-                            <Globe size={22} className="text-white" />
-                        </div>
-                        <span className="text-2xl font-bold text-slate-800">
-                            Easy<span className="text-indigo-600">Sabil</span>
-                        </span>
-                    </div>
+            {/* ===== FORM CARD ===== */}
+            <div className="relative lg:w-3/5 bg-white rounded-t-[2.5rem] lg:rounded-none -mt-8 lg:mt-0 z-10 flex items-center justify-center px-6 py-8 lg:px-12 shadow-[0_-8px_40px_rgba(0,0,0,0.12)] lg:shadow-none overflow-y-auto">
 
-                    <div className="mb-8 animate-fade-up">
-                        <h2 className="text-3xl font-bold text-slate-900">Buat Akun ✨</h2>
-                        <p className="text-slate-500 mt-2">Isi data di bawah untuk mendaftar</p>
+                <div className="w-full max-w-md py-2">
+
+                    <div className="mb-7">
+                        <h2 className="text-2xl font-bold text-slate-900">Buat Akun Baru ✨</h2>
+                        <p className="text-slate-400 text-sm mt-1.5">Isi data di bawah untuk mendaftar ke EasySabil</p>
                     </div>
 
                     <form className="space-y-4" onSubmit={handleRegister}>
-                        <div className="animate-fade-up-delay1">
-                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email</label>
+
+                        {/* Email */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Email</label>
                             <input type="email" required placeholder="contoh@email.com" value={email}
                                 onChange={(e) => setEmail(e.target.value)} className={inputClass} />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4 animate-fade-up-delay2">
+                        {/* Password row */}
+                        <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Password</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Password</label>
                                 <div className="relative">
                                     <input type={showPassword ? 'text' : 'password'} required minLength={6}
                                         placeholder="••••••••" value={password}
@@ -125,12 +131,12 @@ export default function RegisterPage() {
                                         className={inputClass + " pr-10"} />
                                     <button type="button" onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                                     </button>
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Konfirmasi</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Konfirmasi</label>
                                 <div className="relative">
                                     <input type={showConfirm ? 'text' : 'password'} required minLength={6}
                                         placeholder="••••••••" value={confirmPassword}
@@ -138,14 +144,15 @@ export default function RegisterPage() {
                                         className={inputClass + " pr-10"} />
                                     <button type="button" onClick={() => setShowConfirm(!showConfirm)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                                        {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="animate-fade-up-delay3">
-                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status Pengurus</label>
+                        {/* Status */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Status Pengurus</label>
                             <div className="relative">
                                 <select required value={status} onChange={(e) => setStatus(Number(e.target.value))}
                                     className={inputClass + " appearance-none pr-10"}>
@@ -158,8 +165,9 @@ export default function RegisterPage() {
                             </div>
                         </div>
 
-                        <div className="animate-fade-up-delay4">
-                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kelompok</label>
+                        {/* Kelompok */}
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Kelompok</label>
                             <div className="relative">
                                 <select required value={kelompok} onChange={(e) => setKelompok(e.target.value)}
                                     className={inputClass + " appearance-none pr-10"}>
@@ -172,26 +180,45 @@ export default function RegisterPage() {
                             </div>
                         </div>
 
-                        <div className="pt-2 animate-fade-up-delay5">
+                        {/* Submit */}
+                        <div className="pt-2">
                             <button type="submit" disabled={loading}
-                                className="w-full flex items-center justify-center gap-2 py-3.5 px-6 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all duration-150">
+                                className="w-full flex items-center justify-center gap-2.5 py-4 px-6 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition-all duration-150 text-sm">
                                 {loading ? (
                                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 ) : (
                                     <>
                                         <UserPlus size={18} />
-                                        Daftar
+                                        Buat Akun Sekarang
+                                        <ArrowRight size={16} className="ml-auto opacity-60" />
                                     </>
                                 )}
                             </button>
                         </div>
                     </form>
 
-                    <p className="text-center text-sm text-slate-500 mt-6 animate-fade-up-delay5">
-                        Sudah punya akun?{' '}
-                        <Link to="/login" className="text-indigo-600 font-semibold hover:text-indigo-700 transition-colors">
-                            Masuk
-                        </Link>
+                    {/* Divider */}
+                    <div className="flex items-center gap-4 my-5">
+                        <div className="flex-1 h-px bg-slate-100" />
+                        <span className="text-xs text-slate-400 font-medium">SUDAH PUNYA AKUN?</span>
+                        <div className="flex-1 h-px bg-slate-100" />
+                    </div>
+
+                    {/* Login block link */}
+                    <Link
+                        to="/login"
+                        className="flex items-center justify-between w-full px-5 py-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl transition-colors group"
+                    >
+                        <div>
+                            <p className="text-sm font-semibold text-slate-700">Masuk ke akun</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Login dengan email & password</p>
+                        </div>
+                        <ArrowRight size={18} className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                    </Link>
+
+                    {/* Info note */}
+                    <p className="text-center text-xs text-slate-400 mt-5 leading-relaxed">
+                        Akun baru memerlukan persetujuan admin sebelum bisa digunakan
                     </p>
                 </div>
             </div>

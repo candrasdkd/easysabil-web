@@ -83,7 +83,7 @@ export default function CustomDatePicker({ value, onChange, placeholder = "Pilih
         <div className="relative w-full" ref={containerRef}>
             <div
                 onClick={handleOpen}
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 bg-white cursor-pointer flex items-center justify-between"
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-blue-500 bg-white cursor-pointer flex items-center justify-between"
             >
                 <span className={displayValue ? 'text-slate-900' : 'text-slate-400'}>
                     {displayValue || placeholder}
@@ -106,12 +106,12 @@ export default function CustomDatePicker({ value, onChange, placeholder = "Pilih
                         <div className="font-semibold text-slate-800 flex items-center gap-1 cursor-pointer">
                             {view === 'days' && (
                                 <>
-                                    <span onClick={() => setView('months')} className="hover:text-indigo-600 px-1 py-0.5 rounded transition-colors">{MONTHS[currentDate.month()]}</span>
-                                    <span onClick={() => { setView('years'); setYearPage(Math.floor(currentDate.year() / 12) * 12); }} className="hover:text-indigo-600 px-1 py-0.5 rounded transition-colors">{currentDate.year()}</span>
+                                    <span onClick={() => setView('months')} className="hover:text-blue-600 px-1 py-0.5 rounded transition-colors">{MONTHS[currentDate.month()]}</span>
+                                    <span onClick={() => { setView('years'); setYearPage(Math.floor(currentDate.year() / 12) * 12); }} className="hover:text-blue-600 px-1 py-0.5 rounded transition-colors">{currentDate.year()}</span>
                                 </>
                             )}
                             {view === 'months' && (
-                                <span onClick={() => { setView('years'); setYearPage(Math.floor(currentDate.year() / 12) * 12); }} className="hover:text-indigo-600 px-1 py-0.5 rounded transition-colors flex items-center gap-1">
+                                <span onClick={() => { setView('years'); setYearPage(Math.floor(currentDate.year() / 12) * 12); }} className="hover:text-blue-600 px-1 py-0.5 rounded transition-colors flex items-center gap-1">
                                     {currentDate.year()} <ChevronDown size={14} />
                                 </span>
                             )}
@@ -150,8 +150,8 @@ export default function CustomDatePicker({ value, onChange, placeholder = "Pilih
                                             onClick={() => handleSelectDay(d)}
                                             className={`
                                                 aspect-square flex items-center justify-center text-sm rounded-full transition-colors
-                                                ${isSelected ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200' : ''}
-                                                ${!isSelected && isToday ? 'bg-indigo-50 text-indigo-600 font-bold' : ''}
+                                                ${isSelected ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-200' : ''}
+                                                ${!isSelected && isToday ? 'bg-blue-50 text-blue-600 font-bold' : ''}
                                                 ${!isSelected && !isToday ? 'hover:bg-slate-100 text-slate-700' : ''}
                                             `}
                                         >
@@ -170,7 +170,7 @@ export default function CustomDatePicker({ value, onChange, placeholder = "Pilih
                                     key={m}
                                     type="button"
                                     onClick={() => handleSelectMonth(idx)}
-                                    className={`py-2 text-sm rounded-lg transition-colors ${currentDate.month() === idx ? 'bg-indigo-600 text-white font-medium shadow-md shadow-indigo-200' : 'hover:bg-slate-100 text-slate-700'}`}
+                                    className={`py-2 text-sm rounded-lg transition-colors ${currentDate.month() === idx ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-200' : 'hover:bg-slate-100 text-slate-700'}`}
                                 >
                                     {m.substring(0, 3)}
                                 </button>
@@ -185,7 +185,7 @@ export default function CustomDatePicker({ value, onChange, placeholder = "Pilih
                                     key={y}
                                     type="button"
                                     onClick={() => handleSelectYear(y)}
-                                    className={`py-2 text-sm rounded-lg transition-colors ${currentDate.year() === y ? 'bg-indigo-600 text-white font-medium shadow-md shadow-indigo-200' : 'hover:bg-slate-100 text-slate-700'}`}
+                                    className={`py-2 text-sm rounded-lg transition-colors ${currentDate.year() === y ? 'bg-blue-600 text-white font-medium shadow-md shadow-blue-200' : 'hover:bg-slate-100 text-slate-700'}`}
                                 >
                                     {y}
                                 </button>
