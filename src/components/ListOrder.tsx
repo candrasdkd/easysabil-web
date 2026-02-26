@@ -110,11 +110,29 @@ const OrderListPage: React.FC = () => {
         [dataDropdownSensus, memberSearch]
     );
 
+    const existingUserIds = useMemo(() => new Set(filteredOrder.map(o => String(o.user_id))), [filteredOrder]);
+
     // --- Handlers ---
 
     const executeAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string) => {
         if (type === 'create') {
-            resetForm();
+            const preCategory = settingFilter.category.id
+                ? {
+                    label: settingFilter.category.label,
+                    value: settingFilter.category.value,
+                    id: settingFilter.category.id,
+                    name: settingFilter.category.name,
+                    price: settingFilter.category.price,
+                }
+                : { label: "", value: "", id: "", name: "", price: "" };
+            setDataUpload({
+                idCard: null,
+                user: { label: "", value: "", id: "" },
+                category: preCategory,
+                totalOrder: "", note: "",
+                isPayment: false, moneyHolder: "", paymentMethod: "Cash", actualPrice: ""
+            });
+            setMemberSearch("");
             setModalUpdate(false);
             setModalCreate(true);
         } else if (type === 'edit') {
@@ -327,6 +345,7 @@ const OrderListPage: React.FC = () => {
             <OrderFormModal
                 isOpen={modalCreate}
                 isUpdate={modalUpdate}
+                hideCategory={!modalUpdate && !!settingFilter.category.id}
                 dataUpload={dataUpload}
                 setDataUpload={setDataUpload}
                 memberSearch={memberSearch}
@@ -335,6 +354,7 @@ const OrderListPage: React.FC = () => {
                 setIsMemberDropdownOpen={setIsMemberDropdownOpen}
                 filteredMembers={filteredMembers}
                 dataDropdownCategory={dataDropdownCategory}
+                existingUserIds={existingUserIds}
                 onSave={handleSaveOrder}
                 onClose={() => { setModalCreate(false); resetForm(); }}
                 uploading={uploading}

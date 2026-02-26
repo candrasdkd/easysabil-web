@@ -39,12 +39,6 @@ const OrderCard: React.FC<OrderCardProps> = ({
                         <Edit2 size={16} />
                     </button>
                     <button
-                        onClick={() => onEdit(order)}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                    >
-                        <Edit2 size={16} />
-                    </button>
-                    <button
                         onClick={() => onDelete(order.id)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                     >

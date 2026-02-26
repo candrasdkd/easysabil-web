@@ -5,6 +5,7 @@ import type { DataDropdown } from '../types/Order';
 interface OrderFormModalProps {
     isOpen: boolean;
     isUpdate: boolean;
+    hideCategory?: boolean;
     dataUpload: any;
     setDataUpload: (data: any) => void;
     memberSearch: string;
@@ -13,6 +14,7 @@ interface OrderFormModalProps {
     setIsMemberDropdownOpen: (open: boolean) => void;
     filteredMembers: DataDropdown[];
     dataDropdownCategory: DataDropdown[];
+    existingUserIds: Set<string>;
     onSave: () => void;
     onClose: () => void;
     uploading: boolean;
@@ -22,6 +24,7 @@ interface OrderFormModalProps {
 const OrderFormModal: React.FC<OrderFormModalProps> = ({
     isOpen,
     isUpdate,
+    hideCategory = false,
     dataUpload,
     setDataUpload,
     memberSearch,
@@ -30,6 +33,7 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
     setIsMemberDropdownOpen,
     filteredMembers,
     dataDropdownCategory,
+    existingUserIds,
     onSave,
     onClose,
     uploading,
@@ -66,56 +70,103 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
                             {isMemberDropdownOpen && (
                                 <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in zoom-in-95 duration-150">
-                                    {filteredMembers.length > 0 ? filteredMembers.map(m => (
+                                    {filteredMembers.length > 0 ? (
+                                        filteredMembers.map(m => {
+                                            const isExisting = existingUserIds.has(String(m.id));
+                                            return (
+                                                <div
+                                                    key={m.id}
+                                                    className={`px-4 py-3 flex items-center justify-between border-b border-slate-50 last:border-0 ${isExisting ? 'bg-slate-50 cursor-not-allowed opacity-75' : 'hover:bg-blue-50 cursor-pointer'}`}
+                                                    onClick={() => {
+                                                        if (isExisting) return;
+                                                        setDataUpload({ ...dataUpload, user: { label: m.label, value: m.label, id: String(m.id) } });
+                                                        setMemberSearch(m.label);
+                                                        setIsMemberDropdownOpen(false);
+                                                    }}
+                                                >
+                                                    <span className={`font-medium ${isExisting ? 'text-slate-500 line-through decoration-slate-300' : 'text-slate-700'}`}>{m.label}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        {isExisting && (
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100/50 text-amber-700 uppercase tracking-widest">Sudah Ada</span>
+                                                        )}
+                                                        {dataUpload.user.id === String(m.id) && <CheckCircle2 className="text-blue-600" size={16} />}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <div className="px-4 py-4 text-center text-slate-500 text-sm">
+                                            Nama belum terdaftar.
+                                        </div>
+                                    )}
+                                    {memberSearch.trim() && !filteredMembers.some(m => m.label.toLowerCase() === memberSearch.trim().toLowerCase()) && (
                                         <div
-                                            key={m.id}
-                                            className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex items-center justify-between border-b border-slate-50 last:border-0"
+                                            className="px-4 py-3 bg-blue-50/50 hover:bg-blue-100 cursor-pointer border-t border-blue-100 flex items-center gap-2"
                                             onClick={() => {
-                                                setDataUpload({ ...dataUpload, user: { label: m.label, value: m.label, id: String(m.id) } });
-                                                setMemberSearch(m.label);
+                                                const customName = memberSearch.trim();
+                                                setDataUpload({
+                                                    ...dataUpload,
+                                                    user: { label: customName, value: customName, id: `custom_${Date.now()}` }
+                                                });
+                                                setMemberSearch(customName);
                                                 setIsMemberDropdownOpen(false);
                                             }}
                                         >
-                                            <span className="font-medium text-slate-700">{m.label}</span>
-                                            {dataUpload.user.id === String(m.id) && <CheckCircle2 className="text-blue-600" size={16} />}
+                                            <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs shrink-0">+</div>
+                                            <span className="font-medium text-blue-700 text-sm">Gunakan "{memberSearch.trim()}"</span>
                                         </div>
-                                    )) : <div className="px-4 py-6 text-center text-slate-400 text-sm italic">Nama tidak ditemukan</div>}
+                                    )}
                                 </div>
                             )}
                         </div>
                     </div>
 
                     {/* Category Selection */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700">Kategori Pesanan</label>
-                        <div className="relative">
-                            <select
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:border-blue-500 focus:bg-white transition-all appearance-none cursor-pointer"
-                                value={dataUpload.category.id}
-                                onChange={(e) => {
-                                    const selected = dataDropdownCategory.find(cat => String(cat.id) === e.target.value);
-                                    if (selected) {
-                                        setDataUpload({
-                                            ...dataUpload,
-                                            category: {
-                                                label: selected.label,
-                                                value: selected.label,
-                                                id: String(selected.id),
-                                                name: selected.name || "",
-                                                price: String(selected.price || "")
-                                            }
-                                        });
-                                    }
-                                }}
-                            >
-                                <option value="">Pilih Kategori...</option>
-                                {dataDropdownCategory.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.label}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    {hideCategory ? (
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-slate-700">Kategori Pesanan</label>
+                            <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
+                                <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                <span className="font-semibold text-blue-800 text-sm">{dataUpload.category.label || '—'}</span>
+                                {dataUpload.category.price && (
+                                    <span className="ml-auto text-xs text-blue-500 font-medium">
+                                        Rp {Number(dataUpload.category.price).toLocaleString('id-ID')} / pcs
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-slate-700">Kategori Pesanan</label>
+                            <div className="relative">
+                                <select
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 pr-10 font-medium outline-none focus:border-blue-500 focus:bg-white transition-all appearance-none cursor-pointer"
+                                    value={dataUpload.category.id}
+                                    onChange={(e) => {
+                                        const selected = dataDropdownCategory.find(cat => String(cat.id) === e.target.value);
+                                        if (selected) {
+                                            setDataUpload({
+                                                ...dataUpload,
+                                                category: {
+                                                    label: selected.label,
+                                                    value: selected.label,
+                                                    id: String(selected.id),
+                                                    name: selected.name || "",
+                                                    price: String(selected.price || "")
+                                                }
+                                            });
+                                        }
+                                    }}
+                                >
+                                    <option value="">Pilih Kategori...</option>
+                                    {dataDropdownCategory.map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.label}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
