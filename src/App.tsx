@@ -1,6 +1,7 @@
 import AppRoutes from './routes'
 import "./App.css";
 import InstallPWA from './components/InstallPWA';
+import UpdatePrompt from './components/UpdatePrompt';
 import { AuthProvider } from './contexts/AuthContext';
 import { Toaster } from 'react-hot-toast';
 
@@ -16,6 +17,7 @@ function App() {
       />
       <AppRoutes />
       <InstallPWA />
+      <UpdatePrompt />
     </AuthProvider>
   )
 }
