@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
-// 1. Import Toast
+import { useAuth } from '../contexts/AuthContext';
 import toast, { Toaster } from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { useParams } from 'react-router';
 import {
-    Lock,
     Loader2,
     Save,
     XCircle,
@@ -26,8 +25,6 @@ import {
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
 
-const AUTH_KEY = 'member_create_session';
-const SESSION_DURATION = 30 * 60 * 1000;
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
     <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -39,26 +36,10 @@ export default function MemberEdit() {
     const { id } = useParams();
     // const notifications = useNotifications(); // Hapus ini
 
-    // --- AUTH STATE ---
-    const [isAuthenticated, setIsAuthenticated] = useState(() => {
-        const storedTimestamp = localStorage.getItem(AUTH_KEY);
-        if (storedTimestamp) {
-            const now = Date.now();
-            if (now - parseInt(storedTimestamp, 10) < SESSION_DURATION) {
-                return true;
-            } else {
-                localStorage.removeItem(AUTH_KEY);
-            }
-        }
-        return false;
-    });
-
-    const [passwordInput, setPasswordInput] = useState('');
-    const [loadingPassword, setLoadingPassword] = useState(false);
-
     // --- FORM STATE ---
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingDetail, setIsLoadingDetail] = useState(true);
+    const { profile } = useAuth();
 
     const [keluargaOptions, setKeluargaOptions] = useState<Familys[]>([]);
     const [loadingKeluarga, setLoadingKeluarga] = useState(false);
@@ -94,9 +75,19 @@ export default function MemberEdit() {
     // --- FETCH DATA LOGIC ---
 
     const fetchKeluarga = useCallback(async () => {
+        if (!profile) return;
         setLoadingKeluarga(true);
         try {
-            const q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            let q;
+            if (profile.status === 3 || profile.status === 5) {
+                q = query(
+                    collection(db, 'families'),
+                    where('kelompok', '==', profile.kelompok),
+                    orderBy('name', 'asc')
+                );
+            } else {
+                q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            }
             const querySnapshot = await getDocs(q);
             const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setKeluargaOptions(data as any as Familys[]);
@@ -105,7 +96,7 @@ export default function MemberEdit() {
         } finally {
             setLoadingKeluarga(false);
         }
-    }, []);
+    }, [profile]);
 
     const formatAge = (dob: string | null | undefined) => {
         if (!dob) return '-';
@@ -166,15 +157,14 @@ export default function MemberEdit() {
 
     // --- EFFECTS ---
     useEffect(() => {
-        if (isAuthenticated && id) {
-            localStorage.setItem(AUTH_KEY, Date.now().toString());
+        if (id) {
             const initData = async () => {
                 await fetchKeluarga();
                 await fetchMemberDetail(id);
             };
             initData();
         }
-    }, [isAuthenticated, id, fetchKeluarga, fetchMemberDetail]);
+    }, [id, fetchKeluarga, fetchMemberDetail]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -188,33 +178,6 @@ export default function MemberEdit() {
 
     // --- HANDLERS ---
 
-    const handlePasswordSubmit = (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!passwordInput.trim()) {
-            toast('Password kosong', { icon: '⚠️' });
-            return;
-        }
-        setLoadingPassword(true);
-        setTimeout(() => {
-            if (passwordInput === "admin354") {
-                localStorage.setItem(AUTH_KEY, Date.now().toString());
-                setIsAuthenticated(true);
-                // 3. Sukses Login
-                toast.success('Akses Edit Dibuka');
-            } else {
-                // 4. Gagal Login
-                toast.error('Password salah');
-            }
-            setLoadingPassword(false);
-        }, 800);
-    };
-
-    const handleLockSession = () => {
-        localStorage.removeItem(AUTH_KEY);
-        setIsAuthenticated(false);
-        setPasswordInput('');
-        toast('Sesi dikunci', { icon: '🔒' });
-    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -297,7 +260,6 @@ export default function MemberEdit() {
 
             // 6. Sukses Toast Update
             toast.success('Data berhasil diperbarui', { id: toastId });
-            localStorage.setItem(AUTH_KEY, Date.now().toString());
             window.history.back();
 
         } catch (error: any) {
@@ -307,38 +269,6 @@ export default function MemberEdit() {
             setIsSubmitting(false);
         }
     };
-
-    // --- RENDER LOGIN ---
-    if (!isAuthenticated) {
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in">
-                {/* 8. Toaster untuk Login Screen */}
-                <Toaster position="top-center" />
-
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                    <div className="bg-indigo-600 p-6 text-center">
-                        <div className="mx-auto bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 backdrop-blur-md">
-                            <Lock className="text-white" size={32} />
-                        </div>
-                        <h2 className="text-2xl font-bold text-white">Edit Data Terbatas</h2>
-                        <p className="text-indigo-100 text-sm mt-1">Masukkan kunci keamanan untuk mengubah data.</p>
-                    </div>
-                    <div className="p-8">
-                        <form onSubmit={handlePasswordSubmit}>
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Password Admin</label>
-                                <input type="password" autoFocus className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
-                            </div>
-                            <div className="flex gap-3">
-                                <button type="button" onClick={() => window.history.back()} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-medium hover:bg-slate-50">Batal</button>
-                                <button type="submit" disabled={loadingPassword} className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-70">{loadingPassword ? <Loader2 className="animate-spin" size={20} /> : 'Buka Editor'}</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
     if (isLoadingDetail) {
         return (
@@ -366,7 +296,6 @@ export default function MemberEdit() {
                             <p className="text-slate-500 text-sm">Perbarui informasi sensus penduduk.</p>
                         </div>
                     </div>
-                    <button onClick={handleLockSession} className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-100 border border-rose-100"><Lock size={14} /> Kunci Akses</button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation } from "react-router";
 import dayjs from "dayjs";
 import {
-    Search, Loader2, AlertCircle, TrendingUp, ShoppingBag
+    Search, Loader2, AlertCircle, TrendingUp, ShoppingBag, ShieldOff
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 import { useOrders, useOrderDropdowns } from "../hooks/useOrders";
 import { useOrderStats } from "../hooks/useOrderStats";
@@ -16,16 +17,36 @@ import OrderCard from "./OrderCard";
 import OrderSummaryModal from "./OrderSummaryModal";
 import OrderFormModal from "./OrderFormModal";
 import PaymentModal from "./PaymentModal";
-import PasswordDialog from "./PasswordDialog";
+
 import ConfirmDeleteModal from "./ConfirmDeleteModal";
 import OrderFilterModal from "./OrderFilterModal";
 
-const AUTH_KEY = 'order_session';
-const SESSION_DURATION = 30 * 60 * 1000;
+
 
 const OrderListPage: React.FC = () => {
     const location = useLocation();
     const routeState = location.state as { selectedCategory?: SelectedCategoryProps } | undefined;
+    const { profile } = useAuth();
+
+    // Access control: Super Admin, Admin, atau Pengurus Kelompok 1
+    const hasAccess =
+        profile?.status === 0 ||
+        profile?.status === 1 ||
+        (profile?.status === 3 && profile?.kelompok === 'Kelompok 1');
+
+    if (!hasAccess) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+                <div className="text-center">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <ShieldOff size={32} className="text-red-500" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">Akses Dibatasi</h2>
+                    <p className="text-slate-500 text-sm">Halaman ini hanya dapat diakses oleh Super Admin, Admin, atau Pengurus Kelompok 1.</p>
+                </div>
+            </div>
+        );
+    }
 
     // --- Hooks ---
     const [searchQuery, setSearchQuery] = useState("");
@@ -50,20 +71,7 @@ const OrderListPage: React.FC = () => {
     const [modalDelete, setModalDelete] = useState(false);
     const [deleteId, setDeleteId] = useState<number | string | null>(null);
 
-    const [isAuthenticated, setIsAuthenticated] = useState(() => {
-        const storedTimestamp = localStorage.getItem(AUTH_KEY);
-        if (storedTimestamp) {
-            const now = Date.now();
-            if (now - parseInt(storedTimestamp, 10) < SESSION_DURATION) return true;
-            localStorage.removeItem(AUTH_KEY);
-        }
-        return false;
-    });
 
-    const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
-    const [passwordInput, setPasswordInput] = useState("");
-    const [loadingPassword, setLoadingPassword] = useState(false);
-    const [pendingAction, setPendingAction] = useState<{ type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string } | null>(null);
 
     const [modalUpdate, setModalUpdate] = useState(false);
     const [isMemberDropdownOpen, setIsMemberDropdownOpen] = useState(false);
@@ -103,21 +111,6 @@ const OrderListPage: React.FC = () => {
     );
 
     // --- Handlers ---
-    const handleAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string) => {
-        const stored = localStorage.getItem(AUTH_KEY);
-        const isValid = stored && (Date.now() - parseInt(stored, 10) < SESSION_DURATION);
-
-        if (isAuthenticated && isValid) {
-            if (stored) {
-                localStorage.setItem(AUTH_KEY, Date.now().toString());
-            }
-            executeAction(type, payload);
-        } else {
-            setIsAuthenticated(false);
-            setPendingAction({ type, payload });
-            setOpenPasswordDialog(true);
-        }
-    };
 
     const executeAction = (type: 'create' | 'edit' | 'delete', payload?: DataOrder | number | string) => {
         if (type === 'create') {
@@ -154,30 +147,6 @@ const OrderListPage: React.FC = () => {
         }
     };
 
-    const handlePasswordSubmit = (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!passwordInput.trim()) return;
-
-        setLoadingPassword(true);
-        setTimeout(() => {
-            if (passwordInput === "admin354") {
-                localStorage.setItem(AUTH_KEY, Date.now().toString());
-                setIsAuthenticated(true);
-                setOpenPasswordDialog(false);
-                setPasswordInput("");
-                if (pendingAction) executeAction(pendingAction.type, pendingAction.payload);
-            } else {
-                alert("Password Salah!");
-            }
-            setLoadingPassword(false);
-        }, 800);
-    };
-
-    const handleLockSession = () => {
-        localStorage.removeItem(AUTH_KEY);
-        setIsAuthenticated(false);
-        alert("Sesi dikunci.");
-    };
 
     const handleSaveOrder = async () => {
         if (!dataUpload.user.id || !dataUpload.category.id || !dataUpload.totalOrder) {
@@ -297,11 +266,9 @@ const OrderListPage: React.FC = () => {
             <OrderHeader
                 categoryLabel={settingFilter.category.label}
                 dataCount={filteredOrder.length}
-                isAuthenticated={isAuthenticated}
-                onLockSession={handleLockSession}
                 onCopyReport={copyReport}
                 onOpenFilter={() => setModalFilter(true)}
-                onAddOrder={() => handleAction('create')}
+                onAddOrder={() => executeAction('create')}
             />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -325,8 +292,8 @@ const OrderListPage: React.FC = () => {
                             <OrderCard
                                 key={order.id}
                                 order={order}
-                                onEdit={(ord) => handleAction('edit', ord)}
-                                onDelete={(id) => handleAction('delete', id)}
+                                onEdit={(ord) => executeAction('edit', ord)}
+                                onDelete={(id) => executeAction('delete', id)}
                                 onPay={(ord) => {
                                     setPaymentDetail({ id: ord.id, price: ord.unit_price * ord.total_order });
                                     setModalPayment(true);
@@ -404,14 +371,7 @@ const OrderListPage: React.FC = () => {
                 onApply={() => setModalFilter(false)}
             />
 
-            <PasswordDialog
-                isOpen={openPasswordDialog}
-                onClose={() => setOpenPasswordDialog(false)}
-                onConfirm={handlePasswordSubmit}
-                passwordInput={passwordInput}
-                setPasswordInput={setPasswordInput}
-                loadingPassword={loadingPassword}
-            />
+
 
             <ConfirmDeleteModal
                 isOpen={modalDelete}

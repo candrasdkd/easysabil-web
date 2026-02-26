@@ -10,7 +10,6 @@ import {
     ArrowLeft,
     Edit,
     Trash2,
-    Lock,
     Loader2,
     User,
     Calendar,
@@ -29,8 +28,7 @@ import { type Member } from '../types/Member';
 
 dayjs.locale('id');
 
-const AUTH_KEY = 'member_create_session';
-const SESSION_DURATION = 30 * 60 * 1000;
+
 
 // --- Helper Component: Detail Item ---
 const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: any, label: string, value: React.ReactNode, subValue?: string }) => (
@@ -69,17 +67,6 @@ export default function MemberShow() {
     const [member, setMember] = useState<Member | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Auth & Actions
-    const [isAuthenticated, setIsAuthenticated] = useState(() => {
-        const stored = localStorage.getItem(AUTH_KEY);
-        if (stored && Date.now() - parseInt(stored, 10) < SESSION_DURATION) return true;
-        return false;
-    });
-
-    const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
-    const [passwordInput, setPasswordInput] = useState('');
-    const [loadingPassword, setLoadingPassword] = useState(false);
-    const [pendingAction, setPendingAction] = useState<'edit' | 'delete' | null>(null);
     const [openDeleteConfirm, setOpenDeleteConfirm] = useState(false);
 
     // --- Fetch Data ---
@@ -107,47 +94,12 @@ export default function MemberShow() {
 
     // --- Handlers ---
 
-    const handleAction = (action: 'edit' | 'delete') => {
-        if (isAuthenticated) {
-            localStorage.setItem(AUTH_KEY, Date.now().toString());
-            executeAction(action);
-        } else {
-            setPendingAction(action);
-            setOpenPasswordDialog(true);
-        }
-    };
-
     const executeAction = (action: 'edit' | 'delete') => {
         if (action === 'edit') {
             navigate(`/members/${id}/edit`);
         } else if (action === 'delete') {
             setOpenDeleteConfirm(true);
         }
-    };
-
-    const handlePasswordSubmit = (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!passwordInput.trim()) {
-            toast('Password kosong', { icon: '⚠️' });
-            return;
-        }
-
-        setLoadingPassword(true);
-        setTimeout(() => {
-            if (passwordInput === "admin354") {
-                localStorage.setItem(AUTH_KEY, Date.now().toString());
-                setIsAuthenticated(true);
-                setOpenPasswordDialog(false);
-                if (pendingAction) executeAction(pendingAction);
-                // 3. Ganti sukses login
-                toast.success('Akses diberikan');
-            } else {
-                // 4. Ganti error login
-                toast.error('Password salah');
-            }
-            setLoadingPassword(false);
-            setPasswordInput('');
-        }, 800);
     };
 
     const confirmDelete = async () => {
@@ -171,12 +123,7 @@ export default function MemberShow() {
         }
     };
 
-    const handleLockSession = () => {
-        localStorage.removeItem(AUTH_KEY);
-        setIsAuthenticated(false);
-        // 8. Info Lock
-        toast('Sesi dikunci', { icon: '🔒' });
-    };
+
 
     // --- Render Loading ---
     if (isLoading) {
@@ -218,19 +165,14 @@ export default function MemberShow() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {isAuthenticated && (
-                        <button onClick={handleLockSession} className="p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-slate-600 rounded-xl transition-colors" title="Kunci Sesi">
-                            <Lock size={18} />
-                        </button>
-                    )}
                     <button
-                        onClick={() => handleAction('edit')}
+                        onClick={() => executeAction('edit')}
                         className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 hover:border-indigo-200 hover:text-indigo-700 transition-all shadow-sm"
                     >
                         <Edit size={18} /> <span className="hidden sm:inline">Edit</span>
                     </button>
                     <button
-                        onClick={() => handleAction('delete')}
+                        onClick={() => executeAction('delete')}
                         className="flex items-center gap-2 px-5 py-2.5 bg-rose-50 border border-rose-100 text-rose-600 font-medium rounded-xl hover:bg-rose-100 transition-all shadow-sm"
                     >
                         <Trash2 size={18} /> <span className="hidden sm:inline">Hapus</span>
@@ -363,31 +305,6 @@ export default function MemberShow() {
             </div>
 
             {/* --- MODALS --- */}
-
-            {/* Password Modal */}
-            {openPasswordDialog && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                    <form onSubmit={handlePasswordSubmit} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-500">
-                            <Lock size={32} />
-                        </div>
-                        <h3 className="text-xl font-bold text-slate-800 mb-2">Verifikasi Diperlukan</h3>
-                        <p className="text-sm text-slate-500 mb-6">Masukkan password admin untuk {pendingAction === 'edit' ? 'mengubah' : 'menghapus'} data ini.</p>
-                        <input
-                            type="password"
-                            autoFocus
-                            placeholder="Password"
-                            value={passwordInput}
-                            onChange={(e) => setPasswordInput(e.target.value)}
-                            className="w-full px-4 py-3 text-center text-lg tracking-widest rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none mb-6"
-                        />
-                        <div className="flex gap-3">
-                            <button type="button" onClick={() => setOpenPasswordDialog(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors">Batal</button>
-                            <button type="submit" disabled={loadingPassword} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">{loadingPassword ? <Loader2 size={18} className="animate-spin" /> : 'Lanjut'}</button>
-                        </div>
-                    </form>
-                </div>
-            )}
 
             {/* Delete Confirmation Modal */}
             {openDeleteConfirm && (

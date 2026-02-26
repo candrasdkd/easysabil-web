@@ -4,9 +4,10 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { collection, query, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import toast, { Toaster } from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 import {
     Search,
     Plus,
@@ -15,14 +16,12 @@ import {
     Download,
     Edit,
     Trash2,
-    Lock,
     ChevronLeft,
     ChevronRight,
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
     X,
-    Loader2,
     Check,
     Share2
 } from 'lucide-react';
@@ -61,6 +60,7 @@ const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' 
 
 export default function MemberList({ loading, members, refreshMembers }: Props) {
     const navigate = useNavigate();
+    const { profile } = useAuth();
 
     // --- Helper Load State ---
     const getSavedState = <T,>(key: string, defaultValue: T): T => {
@@ -91,17 +91,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     // Data State
     const [listFamily, setListFamily] = useState<Family[]>([]);
+    const [loadingFamily, setLoadingFamily] = useState(false);
 
     // UI Toggles
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-    // Password & Actions
-    const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
-    const [passwordInput, setPasswordInput] = useState('');
-    const [loadingPassword, setLoadingPassword] = useState(false);
-    const [requiredPassword, setRequiredPassword] = useState<string | null>(null);
-    const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+    // Password & Actions (removed — no longer required)
 
     // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: keyof Member | 'actions'; direction: 'asc' | 'desc' }>({ key: 'order', direction: 'asc' });
@@ -123,19 +119,34 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword]);
 
     const fetchFamilys = async () => {
+        if (!profile) return;
+        setLoadingFamily(true);
         try {
-            const q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            let q;
+            if (profile.status === 3 || profile.status === 5) {
+                // Pengurus Kelompok & PM Kelompok → hanya keluarga kelompok sendiri
+                q = query(
+                    collection(db, 'families'),
+                    where('kelompok', '==', profile.kelompok),
+                    orderBy('name', 'asc')
+                );
+            } else {
+                // Status 0, 1, 2, 4 → semua keluarga
+                q = query(collection(db, 'families'), orderBy('name', 'asc'));
+            }
             const querySnapshot = await getDocs(q);
             const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setListFamily(data as any as Family[]);
-        } catch (error) {
-            console.error("Error fetching families:", error);
+        } catch (error: any) {
+            toast.error(`Gagal memuat data keluarga: ${error.message}`);
+        } finally {
+            setLoadingFamily(false);
         }
     };
 
     useEffect(() => {
         fetchFamilys();
-    }, []);
+    }, [profile]);
 
     // --- Logic Helper ---
     const formatAge = (dob: string | null | undefined) => {
@@ -252,43 +263,17 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         }));
     };
 
-    const verifyPasswordAndRun = (expected: string, action: () => void) => {
-        setRequiredPassword(expected);
-        setPendingAction(() => action);
-        setPasswordInput('');
-        setOpenPasswordDialog(true);
-    };
-
-    const handlePasswordSubmit = (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!passwordInput.trim()) {
-            toast('Password kosong', { icon: '⚠️' });
-            return;
-        }
-        setLoadingPassword(true);
-        setTimeout(() => {
-            if (passwordInput === requiredPassword) {
-                setOpenPasswordDialog(false);
-                toast.success('Verifikasi berhasil');
-                pendingAction?.();
-            } else {
-                toast.error('Password salah');
-            }
-            setLoadingPassword(false);
-        }, 800);
-    };
-
     const handleDelete = (member: Member) => {
-        verifyPasswordAndRun('superadmin354', async () => {
-            const toastId = toast.loading('Menghapus data...');
-            try {
-                await deleteDoc(doc(db, 'sensus', member.uuid));
+        if (!window.confirm(`Hapus data "${member.alias || member.name}"?`)) return;
+        const toastId = toast.loading('Menghapus data...');
+        deleteDoc(doc(db, 'sensus', member.uuid))
+            .then(() => {
                 toast.success('Data berhasil dihapus', { id: toastId });
                 refreshMembers();
-            } catch (err: any) {
+            })
+            .catch((err: any) => {
                 toast.error(`Gagal: ${err.message}`, { id: toastId });
-            }
-        });
+            });
     };
 
     // --- NEW: ADVANCED EXCEL EXPORT (GROUPED BY FAMILY) ---
@@ -447,7 +432,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
-            <Toaster position="top-center" />
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -690,8 +674,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     <div className="relative z-20">
                                         <input
                                             type="text"
-                                            placeholder="Cari atau pilih keluarga..."
+                                            placeholder={loadingFamily ? 'Memuat data keluarga...' : 'Cari atau pilih keluarga...'}
                                             value={familySearchKeyword}
+                                            disabled={loadingFamily}
                                             onChange={(e) => {
                                                 setFamilySearchKeyword(e.target.value);
                                                 if (!isFamilyDropdownOpen) setIsFamilyDropdownOpen(true);
@@ -810,45 +795,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* --- PASSWORD MODAL --- */}
-            {openPasswordDialog && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                    <form onSubmit={handlePasswordSubmit} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-500">
-                            <Lock size={32} />
-                        </div>
-                        <h3 className="text-xl font-bold text-slate-800 mb-2">Verifikasi Keamanan</h3>
-                        <p className="text-sm text-slate-500 mb-6">Masukkan password admin untuk melanjutkan tindakan ini.</p>
-
-                        <input
-                            type="password"
-                            autoFocus
-                            placeholder="Masukkan Password"
-                            value={passwordInput}
-                            onChange={(e) => setPasswordInput(e.target.value)}
-                            className="w-full px-4 py-3 text-center text-lg tracking-widest rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none mb-6"
-                        />
-
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setOpenPasswordDialog(false)}
-                                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={loadingPassword}
-                                className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
-                            >
-                                {loadingPassword ? <Loader2 size={18} className="animate-spin" /> : 'Konfirmasi'}
-                            </button>
-                        </div>
-                    </form>
                 </div>
             )}
 

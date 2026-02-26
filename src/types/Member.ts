@@ -54,8 +54,9 @@ export interface MemberFormProps {
     backButtonPath?: string;
 }
 export interface Familys {
-    id: number; // Ganti dari id: number
+    id: string;
     name: string;
+    kelompok: string;
 }
 
 export function getMembersStore(): Member[] {

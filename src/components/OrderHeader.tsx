@@ -1,11 +1,9 @@
 import React from 'react';
-import { ShoppingBag, Lock, Share2, Filter, Plus } from 'lucide-react';
+import { ShoppingBag, Share2, Filter, Plus } from 'lucide-react';
 
 interface OrderHeaderProps {
     categoryLabel: string;
     dataCount: number;
-    isAuthenticated: boolean;
-    onLockSession: () => void;
     onCopyReport: () => void;
     onOpenFilter: () => void;
     onAddOrder: () => void;
@@ -14,8 +12,6 @@ interface OrderHeaderProps {
 const OrderHeader: React.FC<OrderHeaderProps> = ({
     categoryLabel,
     dataCount,
-    isAuthenticated,
-    onLockSession,
     onCopyReport,
     onOpenFilter,
     onAddOrder
@@ -34,11 +30,7 @@ const OrderHeader: React.FC<OrderHeaderProps> = ({
                     </div>
 
                     <div className="flex flex-wrap gap-2 items-center">
-                        {isAuthenticated && (
-                            <button onClick={onLockSession} className="flex items-center gap-2 px-3 py-2 bg-rose-50 text-rose-600 rounded-xl font-bold border border-rose-100 hover:bg-rose-100 transition-all mr-2">
-                                <Lock size={16} /> Kunci
-                            </button>
-                        )}
+
                         <button
                             onClick={onCopyReport}
                             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 transition-all"
