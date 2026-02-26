@@ -123,6 +123,11 @@ export default function LoginPage() {
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
+                            <div className="flex justify-end mt-1.5">
+                                <Link to="/lupa-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                                    Lupa password?
+                                </Link>
+                            </div>
                         </div>
 
                         {/* Submit */}

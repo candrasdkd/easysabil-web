@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router';
 import {
     LayoutDashboard,
@@ -37,6 +37,11 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     const navigate = useNavigate();
     const { user, profile, signOut } = useAuth();
 
+    // Auto-close mobile drawer on navigation
+    useEffect(() => {
+        setIsOpen(false);
+    }, [location.pathname]);
+
     const canSeeOrders =
         profile?.status === 0 ||
         profile?.status === 1 ||
@@ -57,11 +62,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     };
 
     const handleLogout = async () => {
+        setShowLogoutModal(false);
         await signOut();
         navigate('/login');
     };
 
-    const authPages = ['/login', '/register'];
+    const authPages = ['/login', '/register', '/lupa-password'];
     if (authPages.includes(location.pathname)) return null;
 
     if (!user) {

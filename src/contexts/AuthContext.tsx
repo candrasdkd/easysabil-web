@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { onAuthStateChanged, signOut as firebaseSignOut, type User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { onAuthStateChanged, signOut as firebaseSignOut, sendPasswordResetEmail, type User } from "firebase/auth";
+import { doc, onSnapshot, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebase/client";
 
 export interface UserProfile {
@@ -11,12 +11,21 @@ export interface UserProfile {
     isActive: boolean;
     createdAt?: any;
 }
+export const STATUS_LABELS: Record<number, string> = {
+    0: 'Super Admin',
+    1: 'Admin',
+    2: 'Pengurus Desa',
+    3: 'Pengurus Kelompok',
+    4: 'Pengurus Muda/i Desa',
+    5: 'Pengurus Muda/i Kelompok'
+};
 
 interface AuthContextType {
     user: User | null;
     profile: UserProfile | null;
     loading: boolean;
     signOut: () => Promise<void>;
+    resetPassword: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,6 +33,7 @@ const AuthContext = createContext<AuthContextType>({
     profile: null,
     loading: true,
     signOut: async () => { },
+    resetPassword: async () => { },
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -97,8 +107,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await firebaseSignOut(auth);
     };
 
+    const resetPassword = async (email: string) => {
+        // Check if email exists in Firestore users collection first
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', email));
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+            const err: any = new Error('Email tidak terdaftar.');
+            err.code = 'auth/user-not-found';
+            throw err;
+        }
+        await sendPasswordResetEmail(auth, email);
+    };
+
     return (
-        <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+        <AuthContext.Provider value={{ user, profile, loading, signOut, resetPassword }}>
             {children}
         </AuthContext.Provider>
     );

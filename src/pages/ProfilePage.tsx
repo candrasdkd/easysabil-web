@@ -1,5 +1,4 @@
-import { useAuth } from '../contexts/AuthContext';
-import { STATUS_LABELS } from './AdminUsersPage';
+import { useAuth, STATUS_LABELS } from '../contexts/AuthContext';
 import { User, Mail, Shield, Users, CheckCircle, XCircle } from 'lucide-react';
 
 export default function ProfilePage() {

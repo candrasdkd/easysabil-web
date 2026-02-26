@@ -12,12 +12,13 @@ import OrderListPage from './components/ListOrder';
 import MonthlyAttendance from './components/AttendanceLog';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminUsersPage from './pages/AdminUsersPage';
 import ProfilePage from './pages/ProfilePage';
 import FamiliesPage from './pages/FamiliesPage';
 
-const authPages = ['/login', '/register'];
+const authPages = ['/login', '/register', '/lupa-password'];
 
 export default function AppRoutes() {
     const location = useLocation();
@@ -55,6 +56,7 @@ export default function AppRoutes() {
                     {/* Public Routes */}
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
+                    <Route path="/lupa-password" element={<ForgotPasswordPage />} />
 
                     {/* Protected Admin/Super Admin Route */}
                     <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsersPage /></ProtectedRoute>} />

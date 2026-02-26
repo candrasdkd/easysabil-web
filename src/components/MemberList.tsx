@@ -472,27 +472,33 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 </div>
 
-                <div className="flex gap-3 w-full md:w-auto">
+                <div className="flex gap-2 w-full md:w-auto">
                     <button
                         onClick={() => setIsFilterOpen(true)}
-                        className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
+                        className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
                             ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily)
                                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
-                        <Filter size={18} /> Filter
+                        <Filter size={18} />
+                        <span className="hidden sm:inline">Filter</span>
+                        {(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily)
+                            ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-bold sm:hidden">!</span>
+                            : null}
                     </button>
                     <button
                         onClick={handleShare}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-xl font-medium hover:bg-blue-100 transition-all flex-1 md:flex-none"
+                        className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-xl font-medium hover:bg-blue-100 transition-all flex-1 md:flex-none"
                     >
-                        <Share2 size={18} /> Bagikan
+                        <Share2 size={18} />
+                        <span className="hidden sm:inline">Bagikan</span>
                     </button>
                     <button
                         onClick={handleExportExcel}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-all flex-1 md:flex-none"
+                        className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-all flex-1 md:flex-none"
                     >
-                        <Download size={18} /> Excel Grouped
+                        <Download size={18} />
+                        <span className="hidden sm:inline">Excel</span>
                     </button>
                 </div>
             </div>
