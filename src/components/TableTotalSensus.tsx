@@ -582,7 +582,7 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
                                 {/* Duafa block (single cell spanning many rows)
                                     If countDuafa exists we show per-kelompok jiwa/kk values inside this block.
                                 */}
-                                <td rowSpan={10} style={{ ...s.td, textAlign: 'left', padding: '10px', verticalAlign: 'top', fontSize: '14px', lineHeight: '1.4' }}>
+                                <td rowSpan={10} style={{ ...s.td, padding: '10px', fontSize: '14px', lineHeight: '1.4' }}>
                                     <div style={{ fontWeight: 'bold' }}>{countDuafa?.totalKeluargaKelompok1 ?? (stats.jumlahDuafa.keluarga ?? 0)} KK</div>
                                     <div style={{ fontWeight: 'bold' }}>{countDuafa?.totalJiwaKelompok1 ?? (stats.jumlahDuafa.jiwa ?? 0)} Jiwa</div>
                                     <div style={{ borderTop: '2px dashed #666', margin: '8px 0' }}></div>
