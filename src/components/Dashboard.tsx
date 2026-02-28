@@ -29,7 +29,7 @@ export default function Dashboard({ loading, members, listFamily, selectedKelomp
             base = base.filter(m => m.kelompok === selectedKelompok);
         }
         return base;
-    }, [members, selectedKelompok, filteredFamilyByKelompok]);
+    }, [members, selectedKelompok]);
 
     const filteredMembers = useMemo(() => {
         let base = members;
