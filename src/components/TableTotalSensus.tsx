@@ -61,6 +61,8 @@ const processSensusData = (members: Member[]) => {
     const kkSet = new Set<string>();
 
     members.forEach(m => {
+        if (m.kelompok && m.kelompok !== 'Kelompok 1') return;
+
         const gender = (m.gender || '').toLowerCase().trim();
         const isLaki = gender === 'laki - laki' || gender === 'Laki - Laki';
         const status = (m.marriage_status || '').toLowerCase().trim();
@@ -91,8 +93,8 @@ const processSensusData = (members: Member[]) => {
         if (m.is_educate) isLaki ? stats.jumlahBinaan.l++ : stats.jumlahBinaan.p++;
         if (m.is_duafa) stats.jumlahDuafa.jiwa++;
 
-        if (m.id_family && m.family_name !== 'Rantau') {
-            const familyIdStr = String(m.id_family);
+        if (m.family_id && !m.family_name?.startsWith('Rantau')) {
+            const familyIdStr = String(m.family_id);
             if (!kkSet.has(familyIdStr)) {
                 kkSet.add(familyIdStr);
                 stats.jumlahKK++;
@@ -381,7 +383,7 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
     const wData = '50px';
     const wTotal = '80px';
     const wKK = '80px';
-    const wDuafa = '150px';
+    const wDuafa = '100px';
     const wBinaan = '50px';
 
     const handleDownloadPDF = async () => {

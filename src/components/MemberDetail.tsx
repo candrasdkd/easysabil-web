@@ -137,7 +137,7 @@ export default function MemberShow() {
 
     if (!member) return null;
 
-    const pageTitle = member.family_name === 'Rantau'
+    const pageTitle = member.family_name?.startsWith('Rantau')
         ? 'Anggota Perantauan'
         : `Keluarga ${member.family_name}`;
 
