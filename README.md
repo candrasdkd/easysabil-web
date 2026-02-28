@@ -5,16 +5,18 @@ EasySabil is a comprehensive web application for managing community data, census
 Built with React, TypeScript, Vite, TailwindCSS, and powered by Firebase Firestore as its backend database.
 
 ## Features
-- **Census Management**: Track and manage families (`families`) and individual members (`sensus`).
-- **Orders & Finances**: Handle purchase orders (`orders`) and customize available order categories (`category_orders`).
-- **Attendance Logging**: Log interactive daily attendance for members (`attendance_logs`).
-- **Secure Editing**: Protect data deletions and modifications using a locked session mechanism.
+- **Sensus Management**: Track and manage families (`families`) and individual members (`sensus`). Supports Bulk Import via Excel with a convenient Rollback feature.
+- **Role-Based Access Control**: Access levels and data filtering based on user roles (Admin, Coordinator, Member, etc.) managed via the `users` collection.
+- **Orders & Finances**: Handle purchase orders (`orders`) and perform full CRUD operations on available order categories (`category_orders`).
+- **Attendance Logging**: Log interactive daily or monthly attendance for members (`attendance_logs`).
+- **Real-Time Analytics**: View aggregated census data directly from Firebase, providing accurate totals and group metrics (replacing external dependencies like SheetDB).
+- **Premium UI & Theme**: A uniform, clean blue-themed UI with a modern split-layout design for authentication and improved user flow.
 
 ## Tech Stack
-- Frontend: React 18, Vite, Typecript
+- Frontend: React 18, Vite, TypeScript
 - Styling: TailwindCSS
 - Icons: Lucide React
-- Backend / Database: Firebase (Firestore)
+- Backend & Database: Firebase (Authentication, Firestore)
 
 ---
 
@@ -71,8 +73,9 @@ The output will be generated in the `/dist` directory.
 The application expects the following collections in your Firebase Firestore:
 1. `families`: Stores family heads and units.
 2. `sensus`: Stores individual member details, linked to a family via `family_id`.
-3. `category_orders`: List of available categories/products for ordering.
-4. `orders`: Individual order transactions, containing payment statuses and buyer info.
-5. `attendance_logs`: Daily attendance records keyed by unique dates.
+3. `users`: Stores application users, their roles (e.g., admin), and access permissions.
+4. `category_orders`: List of available categories/products for ordering.
+5. `orders`: Individual order transactions, containing payment statuses and buyer info.
+6. `attendance_logs`: Daily attendance records keyed by unique dates.
 
 > **Security Note**: Remember to configure your Firestore rules in production so that unauthorized users cannot arbitrarily delete or modify records.
