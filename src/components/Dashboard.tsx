@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import {
     Users, Home, Heart, GraduationCap,
     ArrowUpRight, Copy, Share2,
-    CheckCircle2, User
+    CheckCircle2, User, ChevronDown
 } from 'lucide-react';
 import copy from 'copy-to-clipboard';
 import { type Familys, type Member } from '../types/Member';
@@ -11,13 +11,37 @@ interface DashboardProps {
     members: Member[];
     listFamily: Familys[];
     loading: boolean;
+    selectedKelompok: string;
+    setSelectedKelompok: (k: string) => void;
+    profileStatus?: number;
 }
 
-export default function Dashboard({ loading, members, listFamily }: DashboardProps) {
+export default function Dashboard({ loading, members, listFamily, selectedKelompok, setSelectedKelompok, profileStatus }: DashboardProps) {
     // --- Logic Statistik ---
-    const activeMembers = useMemo(() => members.filter(m => m.is_active && !m.is_educate), [members]);
+    const filteredFamilyByKelompok = useMemo(() => {
+        if (!selectedKelompok) return listFamily;
+        return listFamily.filter(f => f.kelompok === selectedKelompok);
+    }, [listFamily, selectedKelompok]);
+
+    const activeMembers = useMemo(() => {
+        let base = members.filter(m => m.is_active && !m.is_educate);
+        if (selectedKelompok) {
+            base = base.filter(m => m.kelompok === selectedKelompok);
+        }
+        return base;
+    }, [members, selectedKelompok, filteredFamilyByKelompok]);
+
+    const filteredMembers = useMemo(() => {
+        let base = members;
+        if (selectedKelompok) {
+            const allowedFamilyNames = filteredFamilyByKelompok.map(f => f.name);
+            base = base.filter(m => allowedFamilyNames.includes(m.family_name || ''));
+        }
+        return base;
+    }, [members, selectedKelompok, filteredFamilyByKelompok]);
+
     const total = activeMembers.length || 0;
-    const totalKepalaKeluarga = Math.max(0, (listFamily?.length || 0) - 2);
+    const totalKepalaKeluarga = Math.max(0, (filteredFamilyByKelompok?.length || 0) - 2);
 
     const totalLaki = activeMembers.filter(m => m.gender === 'Laki - Laki').length;
     const totalPerempuan = activeMembers.filter(m => m.gender === 'Perempuan').length;
@@ -45,10 +69,10 @@ export default function Dashboard({ loading, members, listFamily }: DashboardPro
         return Object.entries(stats).sort((a, b) => b[1].total - a[1].total);
     }, [activeMembers]);
 
-    const totalDuda = members.filter(m => m.marriage_status === 'Duda').length;
-    const totalJanda = members.filter(m => m.marriage_status === 'Janda').length;
-    const totalDuafa = members.filter(m => m.is_duafa).length;
-    const totalBinaan = members.filter(m => m.is_educate).length;
+    const totalDuda = filteredMembers.filter(m => m.marriage_status === 'Duda').length;
+    const totalJanda = filteredMembers.filter(m => m.marriage_status === 'Janda').length;
+    const totalDuafa = filteredMembers.filter(m => m.is_duafa).length;
+    const totalBinaan = filteredMembers.filter(m => m.is_educate).length;
 
     // --- Actions ---
     const getSummaryText = () => {
@@ -82,7 +106,6 @@ ${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
     return (
         <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-900">
 
-            {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Dashboard Statistik</h1>
@@ -90,19 +113,39 @@ ${statsByLevel.map(([level, data]) => `👉 *${level}* : ${data.total} orang
                         Ringkasan data demografi anggota dan keluarga.
                     </p>
                 </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={handleCopy}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-all text-sm font-medium shadow-sm"
-                    >
-                        <Copy size={16} /> Salin Ringkasan
-                    </button>
-                    <button
-                        onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(getSummaryText())}`)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium shadow-md shadow-blue-200"
-                    >
-                        <Share2 size={16} /> Bagikan
-                    </button>
+
+                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4">
+                    {/* Filter Kelompok (Hanya tampil jika bukan admin kelompok) */}
+                    {profileStatus !== 3 && profileStatus !== 5 && (
+                        <div className="relative w-full sm:w-auto">
+                            <select
+                                value={selectedKelompok}
+                                onChange={(e) => setSelectedKelompok(e.target.value)}
+                                className="w-full sm:w-auto px-4 py-2 pr-10 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-700 shadow-sm text-sm appearance-none cursor-pointer"
+                            >
+                                <option value="">Semua Kelompok</option>
+                                {Array.from(new Set(listFamily.map(f => f.kelompok))).filter(Boolean).sort().map(kelompok => (
+                                    <option key={kelompok} value={kelompok}>{kelompok}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                        </div>
+                    )}
+
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleCopy}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-all text-sm font-medium shadow-sm"
+                        >
+                            <Copy size={16} /> Salin Ringkasan
+                        </button>
+                        <button
+                            onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(getSummaryText())}`)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm font-medium shadow-md shadow-blue-200"
+                        >
+                            <Share2 size={16} /> Bagikan
+                        </button>
+                    </div>
                 </div>
             </div>
 

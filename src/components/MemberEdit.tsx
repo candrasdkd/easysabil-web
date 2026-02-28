@@ -59,6 +59,7 @@ export default function MemberEdit() {
         gender: '',
         education: '',
         marriage_status: '',
+        kelompok: '',
         is_educate: false,
         age: '0 Bulan',
         is_active: true,
@@ -136,6 +137,7 @@ export default function MemberEdit() {
                 gender: data.gender || '',
                 education: data.level || '',
                 marriage_status: data.marriage_status || '',
+                kelompok: data.kelompok || '',
                 is_educate: data.is_educate || false,
                 age: data.date_of_birth ? formatAge(data.date_of_birth) : '-',
                 is_active: data.is_active ?? true,
@@ -247,6 +249,7 @@ export default function MemberEdit() {
                 level: formValues.education,
                 age: formValues.age,
                 marriage_status: formValues.marriage_status,
+                kelompok: formValues.kelompok,
                 family_id: selectedFamily ? selectedFamily.id : formValues.family_id,
                 family_name: selectedFamily ? selectedFamily.name : familySearch,
                 is_educate: formValues.is_educate,
@@ -421,6 +424,22 @@ export default function MemberEdit() {
                         </h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Kelompok */}
+                            {profile?.status !== 3 && profile?.status !== 5 && (
+                                <div className="md:col-span-2">
+                                    <Label>Kelompok</Label>
+                                    <div className="relative">
+                                        <select name="kelompok" value={formValues.kelompok} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
+                                            <option value="">-- Pilih Kelompok --</option>
+                                            {Array.from(new Set(keluargaOptions.map(f => f.kelompok))).filter(Boolean).sort().map(kelompok => (
+                                                <option key={kelompok} value={kelompok}>{kelompok}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
                                 <Label required>Jenjang Pembinaan</Label>
                                 <div className="relative">

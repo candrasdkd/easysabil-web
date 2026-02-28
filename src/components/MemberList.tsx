@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { collection, query, where, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -14,6 +14,7 @@ import {
     RefreshCw,
     Filter,
     Download,
+    Upload,
     Edit,
     Trash2,
     ChevronLeft,
@@ -42,6 +43,7 @@ type Props = {
 type Family = {
     id: number;
     name: string;
+    kelompok: string;
 };
 
 const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' | 'red' | 'gray' | 'blue' }) => {
@@ -89,6 +91,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [selectedFamily, setSelectedFamily] = useState<string>(() => getSavedState('selectedFamily', ''));
     const [familySearchKeyword, setFamilySearchKeyword] = useState(() => getSavedState('familySearchKeyword', ''));
 
+    // Kelompok Filter
+    const [selectedKelompok, setSelectedKelompok] = useState<string>(() => getSavedState('selectedKelompok', ''));
+
     // Data State
     const [listFamily, setListFamily] = useState<Family[]>([]);
     const [loadingFamily, setLoadingFamily] = useState(false);
@@ -96,6 +101,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     // UI Toggles
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
 
     // Password & Actions (removed — no longer required)
 
@@ -113,10 +120,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             selectedMarriageStatus,
             memberStatus,
             selectedFamily,
-            familySearchKeyword
+            familySearchKeyword,
+            selectedKelompok
         };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
-    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword]);
+    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok]);
 
     const fetchFamilys = async () => {
         if (!profile) return;
@@ -189,6 +197,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         if (memberStatus === 'Aktif') filtered = filtered.filter(m => m.is_active);
         if (memberStatus === 'Tidak Aktif') filtered = filtered.filter(m => !m.is_active);
         if (selectedFamily) filtered = filtered.filter(m => m.family_name === selectedFamily);
+        if (selectedKelompok) {
+            // Kita filter berdasarkan keluarga anggota ini yang punya kelompok = selectedKelompok
+            const allowedFamilyNames = listFamily.filter(f => f.kelompok === selectedKelompok).map(f => f.name);
+            filtered = filtered.filter(m => allowedFamilyNames.includes(m.family_name || ''));
+        }
 
         if (selectedGender.length) filtered = filtered.filter(m => selectedGender.includes(m.gender));
         if (selectedLevel.length) filtered = filtered.filter(m => selectedLevel.includes(m.level));
@@ -198,7 +211,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             const q = searchText.toLowerCase();
             filtered = filtered.filter(m =>
                 Object.entries(m).some(([key, value]) => {
-                    if (value == null || key === 'family_name' || key === 'uuid' || key === 'id_family') return false;
+                    // Hanya kecualikan uuid dan id_family agar pencarian berfungsi untuk family_name
+                    if (value == null || key === 'uuid' || key === 'id_family' || key === 'family_id') return false;
                     let str = String(value);
                     if (key === 'date_of_birth') str = dayjs(value as string).format('DD MMMM YYYY');
                     return str.toLowerCase().includes(q);
@@ -229,7 +243,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         });
 
         return filtered;
-    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily]);
+    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily, selectedKelompok, listFamily]);
 
     const paginatedMembers = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -251,6 +265,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         setMemberStatus('Aktif');
         setSelectedFamily('');
         setFamilySearchKeyword('');
+        setSelectedKelompok('');
         setSearchText('');
         setCurrentPage(1);
         sessionStorage.removeItem(STORAGE_KEY);
@@ -361,6 +376,280 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
 
         toast.success('File Excel berhasil diunduh', { id: toastId });
+    };
+
+    // --- NEW: EXCEL IMPORT ---
+    const handleDownloadTemplate = () => {
+        const headers = [
+            'Nama Keluarga', 'Nama Asli', 'Nama Panggilan', 'Jenis Kelamin',
+            'Tgl Lahir (YYYY-MM-DD)', 'Jenjang', 'Status Nikah', 'Status Aktif', 'No Urut'
+        ];
+
+        const sampleData = [
+            ['KELUARGA BUDI', 'Budi Santoso', 'Budi', 'Laki - Laki', '1980-05-15', 'Dewasa', 'Menikah', 'Aktif', 1],
+            ['KELUARGA BUDI', 'Siti Aminah', 'Siti', 'Perempuan', '1985-08-20', 'Dewasa', 'Menikah', 'Aktif', 2],
+            ['KELUARGA BUDI', 'Joko Anwar', 'Joko', 'Laki - Laki', '2010-02-10', 'Remaja', 'Belum Menikah', 'Aktif', 3]
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+
+        ws['!cols'] = [
+            { wch: 25 }, // Nama Keluarga
+            { wch: 30 }, // Nama Asli
+            { wch: 20 }, // Nama Panggilan
+            { wch: 15 }, // Jenis Kelamin
+            { wch: 25 }, // Tgl Lahir
+            { wch: 15 }, // Jenjang
+            { wch: 15 }, // Status Nikah
+            { wch: 15 }, // Status Aktif
+            { wch: 10 }, // No Urut
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Template Import');
+
+        const fileName = 'Template_Import_Jamaah.xlsx';
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
+        toast.success('Template berhasil diunduh');
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        const toastId = toast.loading('Memproses file Excel...');
+
+        try {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+
+            // Definisikan tipe untuk row JSON
+            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+
+            // Cari header text row index
+            let headerRowIndex = -1;
+            for (let i = 0; i < jsonData.length; i++) {
+                if (jsonData[i] && jsonData[i].includes('Nama Keluarga')) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+
+            if (headerRowIndex === -1) {
+                throw new Error('Format template tidak valid. Pastikan menggunakan file template yang benar.');
+            }
+
+            // Mapping column indices
+            const headers: string[] = jsonData[headerRowIndex];
+            const getColIndex = (name: string) => headers.findIndex(h => typeof h === 'string' && h.includes(name));
+
+            const colFamily = getColIndex('Nama Keluarga');
+            const colName = getColIndex('Nama Asli');
+            const colKelompok = getColIndex('Kelompok');
+            const colAlias = getColIndex('Nama Panggilan');
+            const colGender = getColIndex('Jenis Kelamin');
+            const colDob = getColIndex('Tgl Lahir');
+            const colLevel = getColIndex('Jenjang');
+            const colMarriage = getColIndex('Status Nikah');
+            const colActive = getColIndex('Status Aktif');
+            const colOrder = getColIndex('No Urut');
+
+            if (colFamily === -1 || colName === -1) {
+                throw new Error('Kolom Nama Keluarga atau Nama Asli tidak ditemukan di tabel.');
+            }
+
+            const recordsToImport = [];
+            const unknownFamilies = new Set<string>();
+
+            for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length === 0 || !row[colName]) continue;
+
+                const familyName = row[colFamily]?.toString().trim() || '';
+                const familyObj = familyName ? listFamily.find(f => f.name.toLowerCase() === familyName.toLowerCase()) : undefined;
+
+                if (!familyObj) {
+                    unknownFamilies.add(familyName || '(Kosong)');
+                }
+
+                let dobStr = row[colDob]?.toString().trim() || dayjs().format('YYYY-MM-DD');
+                // Support excel serial date numbers
+                if (typeof row[colDob] === 'number') {
+                    // Excel dates roughly: days since Dec 30 1899
+                    const d = new Date(Math.round((row[colDob] - 25569) * 86400 * 1000));
+                    dobStr = dayjs(d).format('YYYY-MM-DD');
+                } else if (typeof row[colDob] === 'string') {
+                    // Support DD/MM/YYYY format string
+                    const parts = row[colDob].split('/');
+                    if (parts.length === 3) {
+                        const day = parts[0].padStart(2, '0');
+                        const month = parts[1].padStart(2, '0');
+                        let year = parts[2];
+                        if (year.length === 2) {
+                            year = parseInt(year) > 50 ? `19${year}` : `20${year}`;
+                        }
+                        const parsedDate = dayjs(`${year}-${month}-${day}`);
+                        if (parsedDate.isValid()) {
+                            dobStr = parsedDate.format('YYYY-MM-DD');
+                        }
+                    }
+                }
+
+                const isActiveStr = row[colActive]?.toString().toLowerCase() || '';
+                const isActive = isActiveStr === 'aktif' || isActiveStr === 'true' || isActiveStr === '1';
+
+                recordsToImport.push({
+                    name: row[colName]?.toString().trim() || '',
+                    alias: row[colAlias]?.toString().trim() || row[colName]?.toString().trim() || '',
+                    kelompok: row[colKelompok]?.toString().trim() || '',
+                    date_of_birth: dobStr,
+                    gender: row[colGender]?.toString().trim() || '',
+                    level: row[colLevel]?.toString().trim() || '',
+                    marriage_status: row[colMarriage]?.toString().trim() || '',
+                    family_id: familyObj ? familyObj.id : null,
+                    family_name: familyObj ? familyObj.name : familyName,
+                    is_active: isActive,
+                    is_educate: false,
+                    order: parseInt(row[colOrder]?.toString() || '999', 10) || 999,
+                    age: formatAge(dobStr),
+                    created_at: new Date().toISOString()
+                });
+            }
+
+            if (recordsToImport.length === 0) {
+                throw new Error('Tidak ada data yang ditemukan untuk diimport.');
+            }
+
+            if (listFamily.length === 0) {
+                throw new Error('Gagal Import: Data Keluarga masih kosong. Silakan tambahkan minimal satu Kepala Keluarga terlebih dahulu di menu Daftar Keluarga.');
+            }
+
+            if (unknownFamilies.size > 0) {
+                const unknownArr = Array.from(unknownFamilies);
+                throw new Error(`Keluarga tidak terdaftar dalam sistem:\n${unknownArr.join(', ')}\n\nSilakan tambahkan nama keluarga ini di sistem terlebih dahulu atau perbaiki penulisannya agar cocok.`);
+            }
+
+            toast.loading(`Memasukkan ${recordsToImport.length} data ke database...`, { id: toastId });
+
+            const sensusColRef = collection(db, 'sensus');
+
+            // Firestore max 500 writes per batch. Jika > 500, split
+            const chunks = [];
+            for (let i = 0; i < recordsToImport.length; i += 450) {
+                chunks.push(recordsToImport.slice(i, i + 450));
+            }
+
+            for (const chunk of chunks) {
+                const chBatch = writeBatch(db);
+                for (const record of chunk) {
+                    const newRef = doc(sensusColRef);
+                    chBatch.set(newRef, record);
+                }
+                await chBatch.commit();
+            }
+
+            toast.success(`${recordsToImport.length} data berhasil diimport`, { id: toastId });
+            setIsImportModalOpen(false);
+            refreshMembers();
+
+        } catch (error: any) {
+            toast.error(`Gagal import: ${error.message}`, { id: toastId, duration: 8000 });
+        } finally {
+            setIsImporting(false);
+            e.target.value = ''; // Reset file input
+        }
+    };
+
+    const handleRollbackImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        const toastId = toast.loading('Membaca file Excel untuk dibatalkan...');
+
+        try {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+
+            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+
+            let headerRowIndex = -1;
+            for (let i = 0; i < jsonData.length; i++) {
+                if (jsonData[i] && jsonData[i].includes('Nama Asli')) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+
+            if (headerRowIndex === -1) {
+                throw new Error('Format template tidak valid. Pastikan menggunakan file template yang sama.');
+            }
+
+            const headers: string[] = jsonData[headerRowIndex];
+            const colName = headers.findIndex(h => typeof h === 'string' && h.includes('Nama Asli'));
+
+            if (colName === -1) {
+                throw new Error('Kolom Nama Asli tidak ditemukan.');
+            }
+
+            const namesToDelete = new Set<string>();
+            for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length === 0 || !row[colName]) continue;
+                namesToDelete.add(row[colName].toString().trim());
+            }
+
+            if (namesToDelete.size === 0) {
+                throw new Error('Tidak ada nama yang ditemukan untuk dihapus.');
+            }
+
+            const membersToDelete = members.filter(m => namesToDelete.has(m.name));
+
+            if (membersToDelete.length === 0) {
+                toast.success('Tidak ada data yang cocok untuk dihapus (Mungkin sudah dihapus).', { id: toastId });
+                setIsImportModalOpen(false);
+                return;
+            }
+
+            const confirmDelete = window.confirm(`Ditemukan ${membersToDelete.length} orang dari Excel yang cocok di database saat ini. Yakin ingin MENGHAPUS mereka semua? (Aksi ini tidak bisa dikembalikan)`);
+            if (!confirmDelete) {
+                toast.dismiss(toastId);
+                return;
+            }
+
+            toast.loading(`Menghapus ${membersToDelete.length} data dari database...`, { id: toastId });
+
+            const sensusColRef = collection(db, 'sensus');
+            const chunks = [];
+            for (let i = 0; i < membersToDelete.length; i += 450) {
+                chunks.push(membersToDelete.slice(i, i + 450));
+            }
+
+            for (const chunk of chunks) {
+                const chBatch = writeBatch(db);
+                for (const record of chunk) {
+                    const docRef = doc(sensusColRef, record.uuid);
+                    chBatch.delete(docRef);
+                }
+                await chBatch.commit();
+            }
+
+            toast.success(`${membersToDelete.length} data berhasil dibatalkan (dihapus)`, { id: toastId });
+            setIsImportModalOpen(false);
+            refreshMembers();
+
+        } catch (error: any) {
+            toast.error(`Gagal rollback: ${error.message}`, { id: toastId, duration: 8000 });
+        } finally {
+            setIsImporting(false);
+            e.target.value = ''; // Reset file input
+        }
     };
 
     const handleShare = async () => {
@@ -499,6 +788,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     >
                         <Download size={18} />
                         <span className="hidden sm:inline">Excel</span>
+                    </button>
+                    <button
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-xl font-medium hover:bg-blue-100 transition-all flex-1 md:flex-none"
+                    >
+                        <Upload size={18} />
+                        <span className="hidden sm:inline">Import</span>
                     </button>
                 </div>
             </div>
@@ -666,6 +962,26 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 </div>
                             </div>
 
+                            {/* Kelompok Filter (Hanya tampil jika bukan admin kelompok) */}
+                            {profile?.status !== 3 && profile?.status !== 5 && (
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Kelompok</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedKelompok}
+                                            onChange={(e) => setSelectedKelompok(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
+                                        >
+                                            <option value="">Semua Kelompok</option>
+                                            {Array.from(new Set(listFamily.map(f => f.kelompok))).filter(Boolean).sort().map(kelompok => (
+                                                <option key={kelompok} value={kelompok}>{kelompok}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
+                                    </div>
+                                </div>
+                            )}
+
                             {/* 2. Kepala Keluarga (Searchable / Combobox) */}
                             <div>
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Kepala Keluarga</label>
@@ -799,6 +1115,69 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             >
                                 Terapkan
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- IMPORT EXCEL MODAL --- */}
+            {isImportModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                <Upload size={18} className="text-blue-600" /> Import File Excel
+                            </h3>
+                            <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                                <h4 className="font-semibold text-blue-800 text-sm mb-1">Penting:</h4>
+                                <ul className="text-sm text-blue-700 list-disc list-inside space-y-1">
+                                    <li>Gunakan template excel yang telah disediakan.</li>
+                                    <li>Kolom <b>Nama Keluarga</b> harus sama dengan yang terdaftar di sistem.</li>
+                                    <li>Jangan mengubah format header pada template.</li>
+                                </ul>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={handleDownloadTemplate}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all"
+                                >
+                                    <Download size={18} className="text-slate-500" /> Download Template Import
+                                </button>
+
+                                <label className="w-full relative flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-200 cursor-pointer text-center">
+                                    <Upload size={18} />
+                                    {isImporting ? 'Memproses...' : 'Pilih File Excel & Import'}
+                                    <input
+                                        type="file"
+                                        accept=".xlsx, .xls"
+                                        onChange={handleFileUpload}
+                                        className="hidden"
+                                        disabled={isImporting}
+                                    />
+                                </label>
+
+                                <div className="pt-4 border-t border-slate-200 mt-2">
+                                    <h5 className="text-sm font-semibold text-slate-700 mb-2">Pernah salah import data?</h5>
+                                    <label className="w-full relative flex items-center justify-center gap-2 px-4 py-2 bg-white border border-rose-200 text-rose-600 rounded-xl text-sm font-medium hover:bg-rose-50 transition-all cursor-pointer text-center">
+                                        <Trash2 size={16} />
+                                        {isImporting ? 'Memproses...' : 'Hapus (Rollback) Data dari Excel Sama'}
+                                        <input
+                                            type="file"
+                                            accept=".xlsx, .xls"
+                                            onChange={handleRollbackImport}
+                                            className="hidden"
+                                            disabled={isImporting}
+                                        />
+                                    </label>
+                                    <p className="text-xs text-slate-500 mt-2 text-center">Pilih file Excel yang salah, dan sistem akan menghapus member di database yang memiliki nama yang sama dengan di file Anda.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

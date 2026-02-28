@@ -235,7 +235,7 @@ export default function MemberShow() {
                             />
                             <DetailItem
                                 icon={Tag}
-                                label="Urutan di KK"
+                                label="Urutan di Absen"
                                 value={member.order ? `Urutan ke-${member.order}` : '-'}
                             />
                             <DetailItem

@@ -54,6 +54,7 @@ export default function MemberCreate() {
         gender: '',
         education: '',
         marriage_status: '',
+        kelompok: '',
         is_educate: false,
         age: '0 Bulan'
     };
@@ -178,10 +179,12 @@ export default function MemberCreate() {
                 level: formValues.education,
                 age: formValues.age,
                 marriage_status: formValues.marriage_status,
+                kelompok: formValues.kelompok,
                 family_id: selectedKeluarga?.id,
                 family_name: selectedKeluarga?.name,
                 is_educate: formValues.is_educate,
                 is_active: true,
+                created_at: new Date().toISOString(),
             };
 
             const cleanBody = Object.fromEntries(Object.entries(body).filter(([_, v]) => v !== undefined));
@@ -343,6 +346,22 @@ export default function MemberCreate() {
                         </h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Kelompok */}
+                            {profile?.status !== 3 && profile?.status !== 5 && (
+                                <div className="md:col-span-2">
+                                    <Label>Kelompok</Label>
+                                    <div className="relative">
+                                        <select name="kelompok" value={formValues.kelompok} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
+                                            <option value="">-- Pilih Kelompok --</option>
+                                            {Array.from(new Set(keluargaOptions.map(f => f.kelompok))).filter(Boolean).sort().map(kelompok => (
+                                                <option key={kelompok} value={kelompok}>{kelompok}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
                                 <Label required>Jenjang Pembinaan</Label>
                                 <div className="relative">

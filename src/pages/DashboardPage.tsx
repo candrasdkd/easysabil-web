@@ -12,6 +12,7 @@ export default function DashboardPage() {
     const [members, setMembers] = useState<Member[]>([])
     const [listFamily, setListFamily] = useState<Familys[]>([])
     const [isLoading, setIsLoading] = useState(true)
+    const [selectedKelompok, setSelectedKelompok] = useState<string>('');
     const { profile } = useAuth();
 
     const fetchMembers = async () => {
@@ -101,5 +102,14 @@ export default function DashboardPage() {
         }
     }, [profile])
 
-    return <Dashboard loading={isLoading} members={members} listFamily={listFamily} />
+    return (
+        <Dashboard
+            loading={isLoading}
+            members={members}
+            listFamily={listFamily}
+            selectedKelompok={selectedKelompok}
+            setSelectedKelompok={setSelectedKelompok}
+            profileStatus={profile?.status}
+        />
+    );
 }
