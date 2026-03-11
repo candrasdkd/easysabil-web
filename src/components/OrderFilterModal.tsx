@@ -10,6 +10,8 @@ interface OrderFilterModalProps {
     dataDropdownCategory: DataDropdown[];
     isPayment: boolean | null;
     onPaymentStatusChange: (status: boolean | null) => void;
+    paymentMethod: string | null;
+    onPaymentMethodChange: (method: string | null) => void;
     onReset: () => void;
     onApply: () => void;
 }
@@ -22,6 +24,8 @@ const OrderFilterModal: React.FC<OrderFilterModalProps> = ({
     dataDropdownCategory,
     isPayment,
     onPaymentStatusChange,
+    paymentMethod,
+    onPaymentMethodChange,
     onReset,
     onApply
 }) => {
@@ -69,6 +73,25 @@ const OrderFilterModal: React.FC<OrderFilterModalProps> = ({
                                     className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all ${isPayment === s.val ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                                 >
                                     {s.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Metode Bayar</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {[
+                                { label: 'Semua', val: null },
+                                { label: 'Cash', val: 'Cash' },
+                                { label: 'Transfer', val: 'Transfer' }
+                            ].map(m => (
+                                <button
+                                    key={m.label}
+                                    onClick={() => onPaymentMethodChange(m.val)}
+                                    className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all ${paymentMethod === m.val ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                    {m.label}
                                 </button>
                             ))}
                         </div>

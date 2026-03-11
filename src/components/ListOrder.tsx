@@ -54,6 +54,7 @@ const OrderListPage: React.FC = () => {
     const [settingFilter, setSettingFilter] = useState({
         category: routeState?.selectedCategory || { label: "Semua Kategori", value: "", id: "", name: "", price: "" },
         isPayment: null as boolean | null,
+        paymentMethod: null as string | null,
     });
 
     const {
@@ -101,9 +102,10 @@ const OrderListPage: React.FC = () => {
         return dataOrder.filter((item) => {
             const matchesSearch = searchQuery === "" || item.user_name.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesPayment = settingFilter.isPayment === null || item.is_payment === settingFilter.isPayment;
-            return matchesSearch && matchesPayment;
+            const matchesMethod = settingFilter.paymentMethod === null || item.payment_method === settingFilter.paymentMethod;
+            return matchesSearch && matchesPayment && matchesMethod;
         });
-    }, [dataOrder, searchQuery, settingFilter.isPayment]);
+    }, [dataOrder, searchQuery, settingFilter.isPayment, settingFilter.paymentMethod]);
 
     const stats = useOrderStats(filteredOrder);
 
@@ -393,10 +395,13 @@ const OrderListPage: React.FC = () => {
                 dataDropdownCategory={dataDropdownCategory}
                 isPayment={settingFilter.isPayment}
                 onPaymentStatusChange={(status) => setSettingFilter({ ...settingFilter, isPayment: status })}
+                paymentMethod={settingFilter.paymentMethod}
+                onPaymentMethodChange={(method) => setSettingFilter({ ...settingFilter, paymentMethod: method })}
                 onReset={() => {
                     setSettingFilter({
                         category: { label: 'Semua Kategori', value: "", id: "", name: "", price: "" },
-                        isPayment: null
+                        isPayment: null,
+                        paymentMethod: null
                     });
                     setModalFilter(false);
                 }}
