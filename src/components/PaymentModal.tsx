@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CreditCard, CheckCircle2 } from 'lucide-react';
+import { X, CheckCircle2 } from 'lucide-react';
 import { formatRupiah } from '../utils/formatters';
 
 interface PaymentModalProps {
@@ -11,6 +11,10 @@ interface PaymentModalProps {
     setActualPricePay: (val: string) => void;
     isExactChange: boolean;
     setIsExactChange: (val: boolean) => void;
+    paymentMethod: string;
+    setPaymentMethod: (val: string) => void;
+    moneyHolder: string;
+    setMoneyHolder: (val: string) => void;
     uploading: boolean;
 }
 
@@ -23,6 +27,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setActualPricePay,
     isExactChange,
     setIsExactChange,
+    paymentMethod,
+    setPaymentMethod,
+    moneyHolder,
+    setMoneyHolder,
     uploading
 }) => {
     if (!isOpen) return null;
@@ -58,18 +66,50 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                             <div className="space-y-2 animate-in slide-in-from-top-2">
                                 <label className="text-sm font-bold text-slate-700">Jumlah Uang Diterima</label>
                                 <div className="relative">
-                                    <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-300 text-xl">Rp</span>
                                     <input
-                                        type="number"
-                                        placeholder="Contoh: 50000"
-                                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xl text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all"
-                                        value={actualPricePay}
-                                        onChange={(e) => setActualPricePay(e.target.value)}
+                                        type="text"
+                                        placeholder="0"
+                                        className="w-full pl-16 pr-4 py-5 bg-slate-50 border border-slate-200 rounded-[1.5rem] font-black text-2xl text-slate-900 outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner"
+                                        value={actualPricePay ? Number(String(actualPricePay).replace(/[^0-9]/g, "")).toLocaleString('id-ID') : ""}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/[^0-9]/g, "");
+                                            setActualPricePay(val);
+                                        }}
                                         autoFocus
                                     />
                                 </div>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center mt-2">
+                                    Masukkan nominal tanpa titik/koma
+                                </p>
                             </div>
                         )}
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Pemegang Uang</label>
+                                <select
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-medium outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
+                                    value={moneyHolder}
+                                    onChange={(e) => setMoneyHolder(e.target.value)}
+                                >
+                                    {['Sutoyo', 'Riko', 'Candra', 'Fahmi', 'Fachih'].map(name => (
+                                        <option key={name} value={name}>{name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Metode</label>
+                                <select
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-medium outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
+                                    value={paymentMethod}
+                                    onChange={(e) => setPaymentMethod(e.target.value)}
+                                >
+                                    <option value="Cash">Cash</option>
+                                    <option value="Transfer">Transfer</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">

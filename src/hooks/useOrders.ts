@@ -67,15 +67,15 @@ export const useOrders = (categoryFilterId: string | null, showAllData: boolean)
         }
     };
 
-    const updatePayment = async (id: number | string, price: number) => {
+    const updatePayment = async (id: number | string, price: number, moneyHolder: string = 'Fachih', paymentMethod: string = 'Cash') => {
         setUploading(true);
         try {
             const docRef = doc(db, "orders", String(id));
             await updateDoc(docRef, {
                 actual_price: price,
                 is_payment: true,
-                payment_method: 'Cash',
-                money_holder: 'Fachih'
+                payment_method: paymentMethod,
+                money_holder: moneyHolder
             });
 
             await fetchDataOrder();

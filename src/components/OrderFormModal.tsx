@@ -181,8 +181,9 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-bold text-slate-700">Total Harga</label>
-                            <div className="bg-slate-100 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-500 flex items-center">
-                                Rp {parseInt(dataUpload.totalOrder || "0") * parseInt(dataUpload.category.price || "0")}
+                            <div className="bg-slate-100 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-500 flex items-center gap-1">
+                                <span className="text-slate-400">Rp</span>
+                                <span>{(parseInt(dataUpload.totalOrder || "0") * parseInt(dataUpload.category.price || "0")).toLocaleString('id-ID')}</span>
                             </div>
                         </div>
                     </div>
@@ -250,13 +251,19 @@ const OrderFormModal: React.FC<OrderFormModalProps> = ({
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700">Nominal Uang</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Rp 0"
-                                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 font-bold text-emerald-600 outline-none"
-                                            value={dataUpload.actualPrice}
-                                            onChange={(e) => setDataUpload({ ...dataUpload, actualPrice: e.target.value })}
-                                        />
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">Rp</span>
+                                            <input
+                                                type="text"
+                                                placeholder="0"
+                                                className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3 font-bold text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                                value={dataUpload.actualPrice ? Number(String(dataUpload.actualPrice).replace(/[^0-9]/g, "")).toLocaleString('id-ID') : ""}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/[^0-9]/g, "");
+                                                    setDataUpload({ ...dataUpload, actualPrice: val });
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>

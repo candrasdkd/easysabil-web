@@ -92,6 +92,8 @@ const OrderListPage: React.FC = () => {
 
     const [actualPricePay, setActualPricePay] = useState("");
     const [isExactChange, setIsExactChange] = useState(false);
+    const [quickPayMethod, setQuickPayMethod] = useState("Cash");
+    const [quickPayHolder, setQuickPayHolder] = useState("Fachih");
     const [paymentDetail, setPaymentDetail] = useState({ id: "" as number | string, price: 0 });
 
     // --- Memoized Values ---
@@ -206,10 +208,12 @@ const OrderListPage: React.FC = () => {
         if (!isExactChange && !actualPricePay) return alert("Masukkan jumlah uang");
         const numericPrice = isExactChange ? paymentDetail.price : parseInt(actualPricePay.replace(/[^0-9]/g, ""), 10);
 
-        const result = await updatePayment(paymentDetail.id, numericPrice);
+        const result = await updatePayment(paymentDetail.id, numericPrice, quickPayHolder, quickPayMethod);
         if (result.success) {
             setModalPayment(false);
             setActualPricePay("");
+            setQuickPayMethod("Cash");
+            setQuickPayHolder("Fachih");
         } else {
             alert(result.error);
         }
@@ -270,14 +274,18 @@ const OrderListPage: React.FC = () => {
     }, []);
 
     // Auto calculate actual price when payment is checked
+    // We only auto-calculate IF actualPrice is empty (or 0) AND isPayment is enabled
+    // and we use a ref to track if it was JUST enabled to avoid resetting user edits
+    const wasPaymentRef = useRef(false);
     useEffect(() => {
-        if (dataUpload.isPayment && dataUpload.totalOrder && dataUpload.category.price) {
-            if (dataUpload.actualPrice === "" || dataUpload.actualPrice === "0") {
-                const total = parseInt(dataUpload.totalOrder) * parseInt(dataUpload.category.price);
-                if (!isNaN(total)) setDataUpload(prev => ({ ...prev, actualPrice: String(total) }));
+        if (dataUpload.isPayment && !wasPaymentRef.current) {
+            const total = parseInt(dataUpload.totalOrder || "0") * parseInt(dataUpload.category.price || "0");
+            if (!isNaN(total) && total > 0) {
+                setDataUpload(prev => ({ ...prev, actualPrice: String(total) }));
             }
         }
-    }, [dataUpload.isPayment, dataUpload.totalOrder, dataUpload.category.price, dataUpload.actualPrice]);
+        wasPaymentRef.current = dataUpload.isPayment;
+    }, [dataUpload.isPayment, dataUpload.totalOrder, dataUpload.category.price]);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -370,6 +378,10 @@ const OrderListPage: React.FC = () => {
                 setActualPricePay={setActualPricePay}
                 isExactChange={isExactChange}
                 setIsExactChange={setIsExactChange}
+                paymentMethod={quickPayMethod}
+                setPaymentMethod={setQuickPayMethod}
+                moneyHolder={quickPayHolder}
+                setMoneyHolder={setQuickPayHolder}
                 uploading={uploading}
             />
 
