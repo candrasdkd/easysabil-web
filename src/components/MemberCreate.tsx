@@ -16,7 +16,8 @@ import {
     X,
     Users,
     GraduationCap,
-    Tag
+    Tag,
+    HandHeart
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
@@ -56,6 +57,7 @@ export default function MemberCreate() {
         marriage_status: '',
         kelompok: '',
         is_educate: false,
+        is_duafa: false,
         age: '0 Bulan'
     };
 
@@ -147,12 +149,15 @@ export default function MemberCreate() {
 
     const validateForm = () => {
         const errors: string[] = [];
-        if (!formValues.keluarga) errors.push("Keluarga belum dipilih");
         if (!formValues.name?.trim()) errors.push("Nama lengkap wajib diisi");
-        if (!formValues.date_of_birth) errors.push("Tanggal lahir wajib diisi");
         if (!formValues.gender) errors.push("Jenis kelamin wajib dipilih");
-        if (!formValues.education) errors.push("Pendidikan/Jenjang wajib dipilih");
-        if (!formValues.marriage_status) errors.push("Status pernikahan wajib dipilih");
+        
+        if (!formValues.is_educate) {
+            if (!formValues.keluarga) errors.push("Keluarga belum dipilih");
+            if (!formValues.date_of_birth) errors.push("Tanggal lahir wajib diisi");
+            if (!formValues.education) errors.push("Pendidikan/Jenjang wajib dipilih");
+            if (!formValues.marriage_status) errors.push("Status pernikahan wajib dipilih");
+        }
         return errors;
     };
 
@@ -183,6 +188,7 @@ export default function MemberCreate() {
                 family_id: selectedKeluarga?.id,
                 family_name: selectedKeluarga?.name,
                 is_educate: formValues.is_educate,
+                is_duafa: formValues.is_duafa,
                 is_active: true,
                 created_at: new Date().toISOString(),
             };
@@ -225,6 +231,32 @@ export default function MemberCreate() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="p-6 sm:p-8 border-b border-slate-200 bg-slate-50/30">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {!formValues.is_duafa && (
+                                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl bg-white cursor-pointer hover:border-blue-300 transition-colors">
+                                    <input type="checkbox" name="is_educate" checked={formValues.is_educate} onChange={handleChange} className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" />
+                                    <div>
+                                        <span className="font-semibold text-slate-800 block">Status Binaan / Pelajar</span>
+                                        <span className="text-xs text-slate-500">Centang jika anggota ini masih dalam masa pendidikan/binaan aktif.</span>
+                                    </div>
+                                </label>
+                            )}
+
+                            {!formValues.is_educate && (
+                                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl bg-white cursor-pointer hover:border-rose-300 transition-colors">
+                                    <input type="checkbox" name="is_duafa" checked={formValues.is_duafa} onChange={handleChange} className="w-5 h-5 text-rose-600 rounded focus:ring-rose-500 border-gray-300" />
+                                    <div>
+                                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                                            <HandHeart size={16} className="text-rose-500" /> Status Duafa
+                                        </div>
+                                        <span className="text-xs text-slate-500">Penerima bantuan</span>
+                                    </div>
+                                </label>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="p-6 sm:p-8 border-b border-slate-100">
                         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
                             <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"><User size={18} /></div>
@@ -238,93 +270,99 @@ export default function MemberCreate() {
                                 <input type="text" name="name" value={formValues.name} onChange={handleChange} placeholder="Sesuai KTP / KK" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none" />
                             </div>
 
-                            <div className="md:col-span-1">
-                                <Label>Nama Panggilan (Alias)</Label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        name="alias"
-                                        value={formValues.alias}
-                                        onChange={handleChange}
-                                        placeholder="Nama panggilan..."
-                                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    />
-                                    <Tag className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                </div>
-                            </div>
-
-                            {/* --- SEARCHABLE KEPALA KELUARGA (COMBOBOX) --- */}
-                            <div className="md:col-span-2" ref={familyDropdownRef}>
-                                <Label required>Kepala Keluarga (KK)</Label>
-                                <div className="relative">
-                                    <div
-                                        className="relative flex items-center"
-                                        onClick={() => {
-                                            if (!loadingKeluarga) setIsFamilyDropdownOpen(true)
-                                        }}
-                                    >
-                                        <div className="absolute left-4 text-slate-400">
-                                            {loadingKeluarga ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
-                                        </div>
+                            {!formValues.is_educate && (
+                                <div className="md:col-span-1">
+                                    <Label>Nama Panggilan (Alias)</Label>
+                                    <div className="relative">
                                         <input
                                             type="text"
-                                            placeholder={loadingKeluarga ? "Memuat data..." : "Ketik untuk mencari keluarga..."}
-                                            value={familySearch}
-                                            onChange={(e) => {
-                                                setFamilySearch(e.target.value);
-                                                setIsFamilyDropdownOpen(true);
-                                                if (formValues.keluarga) setFormValues(prev => ({ ...prev, keluarga: '' }));
-                                            }}
-                                            onFocus={() => setIsFamilyDropdownOpen(true)}
-                                            className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            name="alias"
+                                            value={formValues.alias}
+                                            onChange={handleChange}
+                                            placeholder="Nama panggilan..."
+                                            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
                                         />
-                                        <div className="absolute right-3 flex items-center gap-1">
-                                            {formValues.keluarga && (
-                                                <button type="button" onClick={(e) => { e.stopPropagation(); handleClearFamily(); }} className="p-1 text-slate-400 hover:text-red-500">
-                                                    <X size={16} />
-                                                </button>
-                                            )}
-                                            <ChevronDown size={16} className={`text-slate-400 transition-transform ${isFamilyDropdownOpen ? 'rotate-180' : ''}`} />
-                                        </div>
+                                        <Tag className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                     </div>
-
-                                    {/* DROPDOWN LIST */}
-                                    {isFamilyDropdownOpen && (
-                                        <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                                            {filteredKeluarga.length > 0 ? (
-                                                filteredKeluarga.map(family => (
-                                                    <div
-                                                        key={family.id}
-                                                        onClick={() => handleSelectFamily(family)}
-                                                        className={`px-4 py-3 cursor-pointer hover:bg-blue-50 transition-colors border-b border-slate-50 last:border-0 flex items-center justify-between
-                                                            ${String(family.id) === formValues.keluarga ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'}
-                                                        `}
-                                                    >
-                                                        {family.name}
-                                                        {String(family.id) === formValues.keluarga && <Users size={16} className="text-blue-600" />}
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="px-4 py-6 text-center text-slate-500 text-sm">
-                                                    Keluarga tidak ditemukan.
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
-                            </div>
+                            )}
 
-                            <div>
-                                <Label required>Tanggal Lahir</Label>
-                                <CustomDatePicker
-                                    value={formValues.date_of_birth}
-                                    onChange={(val: string) => handleChange({ target: { name: 'date_of_birth', value: val, type: 'text' } } as any)}
-                                />
-                            </div>
-                            <div>
-                                <Label>Umur (Otomatis)</Label>
-                                <input type="text" value={formValues.age} readOnly className="w-full px-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 outline-none" />
-                            </div>
+                            {!formValues.is_educate && (
+                                <div className="md:col-span-2" ref={familyDropdownRef}>
+                                    <Label required>Kepala Keluarga (KK)</Label>
+                                    <div className="relative">
+                                        <div
+                                            className="relative flex items-center"
+                                            onClick={() => {
+                                                if (!loadingKeluarga) setIsFamilyDropdownOpen(true)
+                                            }}
+                                        >
+                                            <div className="absolute left-4 text-slate-400">
+                                                {loadingKeluarga ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+                                            </div>
+                                            <input
+                                                type="text"
+                                                placeholder={loadingKeluarga ? "Memuat data..." : "Ketik untuk mencari keluarga..."}
+                                                value={familySearch}
+                                                onChange={(e) => {
+                                                    setFamilySearch(e.target.value);
+                                                    setIsFamilyDropdownOpen(true);
+                                                    if (formValues.keluarga) setFormValues(prev => ({ ...prev, keluarga: '' }));
+                                                }}
+                                                onFocus={() => setIsFamilyDropdownOpen(true)}
+                                                className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            />
+                                            <div className="absolute right-3 flex items-center gap-1">
+                                                {formValues.keluarga && (
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleClearFamily(); }} className="p-1 text-slate-400 hover:text-red-500">
+                                                        <X size={16} />
+                                                    </button>
+                                                )}
+                                                <ChevronDown size={16} className={`text-slate-400 transition-transform ${isFamilyDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </div>
+                                        </div>
+
+                                        {isFamilyDropdownOpen && (
+                                            <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                                                {filteredKeluarga.length > 0 ? (
+                                                    filteredKeluarga.map(family => (
+                                                        <div
+                                                            key={family.id}
+                                                            onClick={() => handleSelectFamily(family)}
+                                                            className={`px-4 py-3 cursor-pointer hover:bg-blue-50 transition-colors border-b border-slate-50 last:border-0 flex items-center justify-between
+                                                                ${String(family.id) === formValues.keluarga ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'}
+                                                            `}
+                                                        >
+                                                            {family.name}
+                                                            {String(family.id) === formValues.keluarga && <Users size={16} className="text-blue-600" />}
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="px-4 py-6 text-center text-slate-500 text-sm">
+                                                        Keluarga tidak ditemukan.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!formValues.is_educate && (
+                                <div>
+                                    <Label required>Tanggal Lahir</Label>
+                                    <CustomDatePicker
+                                        value={formValues.date_of_birth}
+                                        onChange={(val: string) => handleChange({ target: { name: 'date_of_birth', value: val, type: 'text' } } as any)}
+                                    />
+                                </div>
+                            )}
+                            {!formValues.is_educate && (
+                                <div>
+                                    <Label>Umur (Otomatis)</Label>
+                                    <input type="text" value={formValues.age} readOnly className="w-full px-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 outline-none" />
+                                </div>
+                            )}
                             <div>
                                 <Label required>Jenis Kelamin</Label>
                                 <div className="relative">
@@ -362,48 +400,42 @@ export default function MemberCreate() {
                                 </div>
                             )}
 
-                            <div>
-                                <Label required>Jenjang Pembinaan</Label>
-                                <div className="relative">
-                                    <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
-                                        <option value="">-- Pilih Jenjang --</option>
-                                        <option value="Batita">Batita (0-3 Tahun)</option>
-                                        <option value="Paud">Paud (3-5 Tahun)</option>
-                                        <option value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</option>
-                                        <option value="Pra Remaja">Pra Remaja (12-15 Tahun)</option>
-                                        <option value="Remaja">Remaja (15-19 Tahun)</option>
-                                        <option value="Pra Nikah">Pra Nikah (19-30 Tahun)</option>
-                                        <option value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</option>
-                                        <option value="Lansia">Lansia (70+ Tahun)</option>
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            <div>
-                                <Label required>Status Pernikahan</Label>
-                                <div className="relative">
-                                    <Heart className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                    <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none">
-                                        <option value="">-- Pilih Status --</option>
-                                        <option value="Belum Menikah">Belum Menikah</option>
-                                        <option value="Menikah">Menikah</option>
-                                        <option value="Janda">Janda</option>
-                                        <option value="Duda">Duda</option>
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            <div className="md:col-span-2 mt-2">
-                                <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl bg-white cursor-pointer hover:border-blue-300 transition-colors">
-                                    <input type="checkbox" name="is_educate" checked={formValues.is_educate} onChange={handleChange} className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" />
-                                    <div>
-                                        <span className="font-semibold text-slate-800 block">Status Binaan / Pelajar</span>
-                                        <span className="text-xs text-slate-500">Centang jika anggota ini masih dalam masa pendidikan/binaan aktif.</span>
+                            {!formValues.is_educate && (
+                                <div>
+                                    <Label required>Jenjang Pembinaan</Label>
+                                    <div className="relative">
+                                        <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
+                                            <option value="">-- Pilih Jenjang --</option>
+                                            <option value="Batita">Batita (0-3 Tahun)</option>
+                                            <option value="Paud">Paud (3-5 Tahun)</option>
+                                            <option value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</option>
+                                            <option value="Pra Remaja">Pra Remaja (12-15 Tahun)</option>
+                                            <option value="Remaja">Remaja (15-19 Tahun)</option>
+                                            <option value="Pra Nikah">Pra Nikah (19-30 Tahun)</option>
+                                            <option value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</option>
+                                            <option value="Lansia">Lansia (70+ Tahun)</option>
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     </div>
-                                </label>
-                            </div>
+                                </div>
+                            )}
+
+                            {!formValues.is_educate && (
+                                <div>
+                                    <Label required>Status Pernikahan</Label>
+                                    <div className="relative">
+                                        <Heart className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none">
+                                            <option value="">-- Pilih Status --</option>
+                                            <option value="Belum Menikah">Belum Menikah</option>
+                                            <option value="Menikah">Menikah</option>
+                                            <option value="Janda">Janda</option>
+                                            <option value="Duda">Duda</option>
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 

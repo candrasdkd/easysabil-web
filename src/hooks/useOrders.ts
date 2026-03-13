@@ -105,7 +105,12 @@ export const useOrderDropdowns = () => {
 
     const fetchDropdowns = useCallback(async () => {
         try {
-            const sensusQuery = query(collection(db, "sensus"), orderBy("name", "asc"));
+            const sensusQuery = query(
+                collection(db, "sensus"),
+                where("kelompok", "==", "Kelompok 1"),
+                where("is_active", "==", true),
+                orderBy("name", "asc")
+            );
             const catQuery = query(collection(db, "category_orders"), orderBy("year", "desc"));
 
             const [sensusSnap, catSnap] = await Promise.all([

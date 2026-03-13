@@ -108,8 +108,6 @@ export default function MemberShow() {
         // 5. Tambahkan loading UX saat hapus
         const toastId = toast.loading('Menghapus data...');
         setIsLoading(true);
-        console.log(member);
-
         try {
             await deleteDoc(doc(db, 'sensus', member.uuid));
 
