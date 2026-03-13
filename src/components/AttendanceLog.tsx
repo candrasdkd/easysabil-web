@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import type { Member } from '../types/Member';
+import { useMembersStore } from '../store/membersStore';
 
 dayjs.locale('id');
 
@@ -23,29 +23,15 @@ const CATEGORIES = [
 
 export default function MonthlyAttendance() {
     const [currentDate, setCurrentDate] = useState(dayjs());
-    const [members, setMembers] = useState<Member[]>([]);
     const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
     const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('Bapak-Bapak');
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [selectedShareGroup, setSelectedShareGroup] = useState<string>('Bapak-Bapak');
 
-    // --- FETCH DATA ---
-    const fetchMembers = useCallback(async () => {
-        try {
-            const q = query(
-                collection(db, 'sensus'),
-                where('is_active', '==', true),
-                orderBy('order', 'asc'),
-                orderBy('name', 'asc')
-            );
-            const querySnapshot = await getDocs(q);
-            const data = querySnapshot.docs.map(d => ({ uuid: d.id, ...d.data() }));
-            setMembers(data as any as Member[]);
-        } catch (error) {
-            console.error("Error fetching members:", error);
-        }
-    }, []);
+    // --- AMBIL DATA MEMBERS DARI STORE (sudah ter-cache) ---
+    const { members, fetchMembers } = useMembersStore();
+    useEffect(() => { fetchMembers(); }, [fetchMembers]);
 
     const fetchAttendance = useCallback(async () => {
         setIsLoading(true);
@@ -71,7 +57,6 @@ export default function MonthlyAttendance() {
         }
     }, [currentDate]);
 
-    useEffect(() => { fetchMembers(); }, [fetchMembers]);
     useEffect(() => { fetchAttendance(); }, [fetchAttendance]);
 
     // --- LOGIC ---

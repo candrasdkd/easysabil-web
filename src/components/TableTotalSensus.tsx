@@ -1,9 +1,8 @@
-import { forwardRef, useRef, useMemo, useState, useEffect } from 'react';
+import { forwardRef, useRef, useMemo, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import dayjs from 'dayjs';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/client';
 import { type Member } from '../types/Member';
+import { useMembersStore } from '../store/membersStore';
 
 // --- Interfaces ---
 interface TableProps { }
@@ -165,29 +164,12 @@ const processSensusData = (members: Member[]) => {
 // --- KOMPONEN UTAMA ---
 const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
     const printRef = useRef<HTMLDivElement>(null);
-    const [members, setMembers] = useState<Member[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { members, loading, isInitialized, fetchMembers } = useMembersStore();
 
-    // For rendering: if groupedData exists use it; otherwise fallback to supabase-processed g1
+    // Fetch hanya jika cache kosong atau expired (diatur di dalam store)
+    useEffect(() => { fetchMembers(); }, [fetchMembers]);
+
     const { groups, desaTotals: firebaseDesaTotals } = useMemo(() => processSensusData(members), [members]);
-
-    // fetch firebase members
-    useEffect(() => {
-        const fetchMembers = async () => {
-            setLoading(true);
-            try {
-                const q = query(collection(db, 'sensus'), where('is_active', '==', true));
-                const querySnapshot = await getDocs(q);
-                const data = querySnapshot.docs.map(doc => ({ uuid: doc.id, ...doc.data() }));
-                setMembers(data as any as Member[]);
-            } catch (err: any) {
-                console.error("Gagal ambil data:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchMembers();
-    }, []);
 
     // --- STYLING (WARNA TAILWIND) ---
     const colors = {
@@ -270,7 +252,7 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
     };
 
     // Loading UX: if both sources not ready show loader
-    const isLoadingAll = loading && !groups;
+    const isLoadingAll = !isInitialized && loading;
 
     if (isLoadingAll) return (
         <div className="flex h-64 flex-col items-center justify-center gap-2">

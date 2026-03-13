@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-    collection, query, where, getDocs,
-    addDoc, doc, updateDoc, deleteDoc, writeBatch
+    collection,
+    addDoc, doc, updateDoc, deleteDoc, writeBatch, getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, X, Check, Users, Download, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import { useFamiliesStore } from '../store/familiesStore';
 
 const KELOMPOK_OPTIONS = ['Kelompok 1', 'Kelompok 2', 'Kelompok 3', 'Kelompok 4', 'Kelompok 5'];
 const INITIAL_PAGE_SIZE = 15;
@@ -22,12 +23,10 @@ interface Family {
 const EMPTY_FORM = { name: '', kelompok: '' };
 
 export default function FamiliesPage() {
-    const [families, setFamilies] = useState<Family[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState(EMPTY_FORM);
-    const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [kelompokFilter, setKelompokFilter] = useState('');
@@ -45,44 +44,17 @@ export default function FamiliesPage() {
     const canEdit = profile?.status === 0 || profile?.status === 1 || profile?.status === 3;
     const isKelompokAdmin = profile?.status === 3;
 
-    const fetchFamilies = async () => {
-        setLoading(true);
-        try {
-            let q;
-            if (profile?.status === 3) {
-                // Pengurus Kelompok → hanya keluarga kelompoknya sendiri
-                q = query(
-                    collection(db, 'families'),
-                    where('kelompok', '==', profile.kelompok)
-                );
-            } else {
-                q = query(collection(db, 'families'));
-            }
-            const snap = await getDocs(q);
-            let data: Family[] = snap.docs.map(d => ({
-                id: d.id,
-                name: d.data().name ?? '',
-                kelompok: d.data().kelompok ?? '',
-            }));
+    // Ambil data families dari store (ter-cache)
+    const { families, loading, isInitialized, fetchFamilies, invalidate } = useFamiliesStore();
 
-            // Client-side sort by Kelompok then Name
-            data.sort((a, b) => {
-                const kelA = a.kelompok || 'ZZZ';
-                const kelB = b.kelompok || 'ZZZ';
-                if (kelA !== kelB) return kelA.localeCompare(kelB);
-                return a.name.localeCompare(b.name);
-            });
+    useEffect(() => {
+        if (profile) fetchFamilies(profile);
+    }, [profile, fetchFamilies]);
 
-            setFamilies(data);
-        } catch (e) {
-            console.error(e);
-            toast.error('Gagal memuat data keluarga');
-        } finally {
-            setLoading(false);
-        }
+    // Helper: refresh store setelah mutasi
+    const refreshStore = () => {
+        if (profile) { invalidate(); fetchFamilies(profile); }
     };
-
-    useEffect(() => { fetchFamilies(); }, [profile]);
 
     const openCreate = () => {
         setEditingId(null);
@@ -110,29 +82,16 @@ export default function FamiliesPage() {
                     name: form.name.trim(),
                     kelompok: form.kelompok,
                 });
-                setFamilies(prev => prev.map(f =>
-                    f.id === editingId ? { ...f, name: form.name.trim(), kelompok: form.kelompok } : f
-                ));
                 toast.success('Keluarga berhasil diperbarui');
             } else {
-                const ref = await addDoc(collection(db, 'families'), {
+                await addDoc(collection(db, 'families'), {
                     name: form.name.trim(),
                     kelompok: form.kelompok,
-                });
-                const newFamily = { id: ref.id, name: form.name.trim(), kelompok: form.kelompok };
-                setFamilies(prev => {
-                    const next = [...prev, newFamily];
-                    next.sort((a, b) => {
-                        const kelA = a.kelompok || 'ZZZ';
-                        const kelB = b.kelompok || 'ZZZ';
-                        if (kelA !== kelB) return kelA.localeCompare(kelB);
-                        return a.name.localeCompare(b.name);
-                    });
-                    return next;
                 });
                 toast.success('Keluarga berhasil ditambahkan');
             }
             setShowModal(false);
+            refreshStore();
         } catch (e) {
             console.error(e);
             toast.error('Gagal menyimpan data');
@@ -146,8 +105,8 @@ export default function FamiliesPage() {
         setDeletingId(f.id);
         try {
             await deleteDoc(doc(db, 'families', f.id));
-            setFamilies(prev => prev.filter(x => x.id !== f.id));
             toast.success('Keluarga berhasil dihapus');
+            refreshStore();
         } finally {
             setDeletingId(null);
         }
@@ -271,7 +230,7 @@ export default function FamiliesPage() {
 
             toast.success(`${recordsToImport.length} data keluarga berhasil diimport`, { id: toastId });
             setIsImportModalOpen(false);
-            fetchFamilies();
+            refreshStore();
 
         } catch (error: any) {
             toast.error(`Gagal import: ${error.message}`, { id: toastId, duration: 8000 });
@@ -364,7 +323,7 @@ export default function FamiliesPage() {
 
             toast.success(`${familiesToDelete.length} data keluarga berhasil dibatalkan (dihapus)`, { id: toastId });
             setIsImportModalOpen(false);
-            fetchFamilies();
+            refreshStore();
 
         } catch (error: any) {
             toast.error(`Gagal rollback: ${error.message}`, { id: toastId, duration: 8000 });
@@ -453,7 +412,7 @@ export default function FamiliesPage() {
 
             {/* Table */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                {loading ? (
+                {(!isInitialized && loading) ? (
                     <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
                         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" />
                         Memuat data...

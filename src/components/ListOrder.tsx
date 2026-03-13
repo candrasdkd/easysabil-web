@@ -311,34 +311,34 @@ const OrderListPage: React.FC = () => {
                     />
                 </div>
 
-                {loading && <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>}
+                {loading && (
+                    <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-600" size={40} /></div>
+                )}
                 {error && <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-700 flex items-center gap-3"><AlertCircle /> {error}</div>}
 
-                {!loading && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredOrder.length > 0 ? filteredOrder.map((order) => (
-                            <OrderCard
-                                key={order.id}
-                                order={order}
-                                onEdit={(ord) => executeAction('edit', ord)}
-                                onDelete={(id) => executeAction('delete', id)}
-                                onPay={(ord) => {
-                                    setPaymentDetail({ id: ord.id, price: ord.unit_price * ord.total_order });
-                                    setModalPayment(true);
-                                }}
-                                formatRupiah={formatRupiah}
-                            />
-                        )) : (
-                            <div className="col-span-full py-20 text-center">
-                                <div className="bg-white inline-block p-6 rounded-full mb-4 shadow-sm border border-slate-100">
-                                    <ShoppingBag size={48} className="text-slate-300" />
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-800">Tidak Ada Pesanan</h3>
-                                <p className="text-slate-500">Coba ubah filter atau tambah pesanan baru.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredOrder.length > 0 ? filteredOrder.map((order) => (
+                        <OrderCard
+                            key={order.id}
+                            order={order}
+                            onEdit={(ord) => executeAction('edit', ord)}
+                            onDelete={(id) => executeAction('delete', id)}
+                            onPay={(ord) => {
+                                setPaymentDetail({ id: ord.id, price: ord.unit_price * ord.total_order });
+                                setModalPayment(true);
+                            }}
+                            formatRupiah={formatRupiah}
+                        />
+                    )) : !loading ? (
+                        <div className="col-span-full py-20 text-center">
+                            <div className="bg-white inline-block p-6 rounded-full mb-4 shadow-sm border border-slate-100">
+                                <ShoppingBag size={48} className="text-slate-300" />
                             </div>
-                        )}
-                    </div>
-                )}
+                            <h3 className="text-lg font-bold text-slate-800">Tidak Ada Pesanan</h3>
+                            <p className="text-slate-500">Coba ubah filter atau tambah pesanan baru.</p>
+                        </div>
+                    ) : null}
+                </div>
             </div>
 
             <button

@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from "react-router";
-import {
-    collection, query, orderBy, getDocs,
-    addDoc, updateDoc, deleteDoc, doc
-} from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { useCategoryOrdersStore, type OrderCategory } from '../store/categoryOrdersStore';
 import {
     RefreshCw,
     AlertCircle,
@@ -23,12 +19,6 @@ import {
 } from 'lucide-react';
 
 // --- TYPES ---
-export interface OrderCategory {
-    id: string;
-    name: string;
-    price: number;
-    year: number;
-}
 
 type ModalMode = 'add' | 'edit' | null;
 
@@ -272,45 +262,27 @@ const DeleteModal = ({
 
 // --- MAIN PAGE COMPONENT ---
 export default function OrderCategoryScreen() {
-    const [rows, setRows] = useState<OrderCategory[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
     const navigate = useNavigate();
+
+    // Ambil data dari store (ter-cache)
+    const { categories: rows, loading, isInitialized, error, fetchCategories, saveCategory, deleteCategory } = useCategoryOrdersStore();
+
+    useEffect(() => { fetchCategories(); }, [fetchCategories]);
 
     // --- CRUD Modal States ---
     const [modalMode, setModalMode] = useState<ModalMode>(null);
     const [editTarget, setEditTarget] = useState<OrderCategory | null>(null);
     const [form, setForm] = useState<FormState>(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
-
     const [deleteTarget, setDeleteTarget] = useState<OrderCategory | null>(null);
     const [deleting, setDeleting] = useState(false);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const q = query(collection(db, 'category_orders'), orderBy('year', 'desc'));
-            const querySnapshot = await getDocs(q);
-
-            const mapped: OrderCategory[] = querySnapshot.docs.map((doc) => {
-                const r = doc.data();
-                return {
-                    id: doc.id,
-                    name: r.name,
-                    year: Number(r.year),
-                    price: r.price === null ? 0 : Number(r.price),
-                };
-            });
-            setRows(mapped);
-        } catch (err: any) {
-            setError(err.message);
-            setRows([]);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    // Refresh manual (untuk tombol refresh)
+    const handleRefresh = useCallback(async () => {
+        useCategoryOrdersStore.getState().invalidate();
+        await fetchCategories();
+    }, [fetchCategories]);
 
     const handleSelect = (d: OrderCategory) => {
         const selectedCategory = {
@@ -353,43 +325,38 @@ export default function OrderCategoryScreen() {
                 price: Number(form.price),
                 year: Number(form.year),
             };
-            if (modalMode === 'add') {
-                await addDoc(collection(db, 'category_orders'), payload);
-            } else if (modalMode === 'edit' && editTarget) {
-                await updateDoc(doc(db, 'category_orders', editTarget.id), payload);
+            const result = await saveCategory(payload, modalMode === 'edit' && editTarget ? editTarget.id : undefined);
+            if (result.success) {
+                handleCloseModal();
+                await fetchCategories();
+            } else {
+                alert(`Gagal menyimpan: ${result.error}`);
             }
-            handleCloseModal();
-            await fetchData();
-        } catch (err: any) {
-            alert(`Gagal menyimpan: ${err.message}`);
         } finally {
             setSaving(false);
         }
     };
 
     // --- Open Delete Confirm ---
-    const handleOpenDelete = (c: OrderCategory) => {
-        setDeleteTarget(c);
-    };
+    const handleOpenDelete = (c: OrderCategory) => { setDeleteTarget(c); };
 
     // --- Confirm Delete ---
     const handleConfirmDelete = async () => {
         if (!deleteTarget) return;
         setDeleting(true);
         try {
-            await deleteDoc(doc(db, 'category_orders', deleteTarget.id));
-            setDeleteTarget(null);
-            await fetchData();
-        } catch (err: any) {
-            alert(`Gagal menghapus: ${err.message}`);
+            const result = await deleteCategory(deleteTarget.id);
+            if (result.success) {
+                setDeleteTarget(null);
+                await fetchCategories();
+            } else {
+                alert(`Gagal menghapus: ${result.error}`);
+            }
         } finally {
             setDeleting(false);
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
@@ -418,7 +385,7 @@ export default function OrderCategoryScreen() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={fetchData}
+                        onClick={handleRefresh}
                         disabled={loading}
                         className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm disabled:opacity-50"
                     >
@@ -444,8 +411,8 @@ export default function OrderCategoryScreen() {
             </div>
 
             <div className="max-w-7xl mx-auto">
-                {/* Loading State */}
-                {loading && (
+                {/* Loading State: hanya saat belum pernah fetch */}
+                {(!isInitialized && loading) && (
                     <div className="flex flex-col items-center justify-center py-20">
                         <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
                         <p className="text-slate-500 font-medium">Memuat kategori...</p>

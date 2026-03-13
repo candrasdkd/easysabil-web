@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { collection, query, where, orderBy, getDocs, doc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, deleteDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { type Member } from '../types/Member';
+import { useFamiliesStore } from '../store/familiesStore';
 
 dayjs.locale('id');
 
@@ -94,9 +95,14 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     // Kelompok Filter
     const [selectedKelompok, setSelectedKelompok] = useState<string>(() => getSavedState('selectedKelompok', ''));
 
-    // Data State
-    const [listFamily, setListFamily] = useState<Family[]>([]);
-    const [loadingFamily, setLoadingFamily] = useState(false);
+    // Data State: families dari store (ter-cache, tidak re-fetch tiap navigasi)
+    const { families: familiesFromStore, fetchFamilies } = useFamiliesStore();
+    const listFamily = familiesFromStore as any as Family[];
+    const loadingFamily = false;
+
+    useEffect(() => {
+        if (profile) fetchFamilies(profile);
+    }, [profile, fetchFamilies]);
 
     // UI Toggles
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
@@ -104,12 +110,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
 
-    // Password & Actions (removed — no longer required)
-
     // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: keyof Member | 'actions'; direction: 'asc' | 'desc' }>({ key: 'order', direction: 'asc' });
 
-    // --- Effects ---
+    // --- Effects: Simpan filter ke sessionStorage ---
     useEffect(() => {
         const filtersToSave = {
             searchText,
@@ -125,36 +129,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
     }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok]);
-
-    const fetchFamilys = async () => {
-        if (!profile) return;
-        setLoadingFamily(true);
-        try {
-            let q;
-            if (profile.status === 3 || profile.status === 5) {
-                // Pengurus Kelompok & PM Kelompok → hanya keluarga kelompok sendiri
-                q = query(
-                    collection(db, 'families'),
-                    where('kelompok', '==', profile.kelompok),
-                    orderBy('name', 'asc')
-                );
-            } else {
-                // Status 0, 1, 2, 4 → semua keluarga
-                q = query(collection(db, 'families'), orderBy('name', 'asc'));
-            }
-            const querySnapshot = await getDocs(q);
-            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setListFamily(data as any as Family[]);
-        } catch (error: any) {
-            toast.error(`Gagal memuat data keluarga: ${error.message}`);
-        } finally {
-            setLoadingFamily(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchFamilys();
-    }, [profile]);
 
     // --- Logic Helper ---
     const formatAge = (dob: string | null | undefined) => {
