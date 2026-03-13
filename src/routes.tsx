@@ -13,6 +13,7 @@ import MonthlyAttendance from './components/AttendanceLog';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import AuditLogPage from './pages/AuditLogPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminUsersPage from './pages/AdminUsersPage';
 import ProfilePage from './pages/ProfilePage';
@@ -60,6 +61,14 @@ export default function AppRoutes() {
 
                     {/* Protected Admin/Super Admin Route */}
                     <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsersPage /></ProtectedRoute>} />
+                    <Route
+                        path="/audit-log"
+                        element={
+                            <ProtectedRoute adminOnly>
+                                <AuditLogPage />
+                            </ProtectedRoute>
+                        }
+                    />
 
                     {/* Protected Routes */}
                     <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />

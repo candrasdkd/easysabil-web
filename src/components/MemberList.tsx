@@ -29,6 +29,7 @@ import {
 
 import { type Member } from '../types/Member';
 import { useFamiliesStore } from '../store/familiesStore';
+import { logAudit } from '../utils/auditLogger';
 
 dayjs.locale('id');
 
@@ -256,7 +257,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         if (!window.confirm(`Hapus data "${member.alias || member.name}"?`)) return;
         const toastId = toast.loading('Menghapus data...');
         deleteDoc(doc(db, 'sensus', member.uuid))
-            .then(() => {
+            .then(async () => {
+                await logAudit('DELETE', 'MEMBER', member.uuid, member.name, profile, null, `Menghapus anggota: ${member.name}`);
                 toast.success('Data berhasil dihapus', { id: toastId });
                 refreshMembers();
             })

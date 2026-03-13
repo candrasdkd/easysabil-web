@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
+import { logAudit } from '../utils/auditLogger';
 
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
@@ -68,6 +69,7 @@ export default function MemberEdit() {
     };
 
     const [formValues, setFormValues] = useState(INITIAL_FORM_VALUES);
+    const [originalData, setOriginalData] = useState<any>(null);
 
     const filteredKeluarga = keluargaOptions.filter(k =>
         k.name.toLowerCase().includes(familySearch.toLowerCase())
@@ -143,6 +145,7 @@ export default function MemberEdit() {
                 is_duafa: data.is_duafa ?? false,
                 order: data.order
             });
+            setOriginalData(data);
 
             if (data.family_name) {
                 setFamilySearch(data.family_name);
@@ -261,6 +264,24 @@ export default function MemberEdit() {
 
             const docRef = doc(db, 'sensus', id as string);
             await updateDoc(docRef, body);
+
+            // Hitung perubahan (diff)
+            const changes: Record<string, { old: any, new: any }> = {};
+            if (originalData) {
+                Object.keys(body).forEach(key => {
+                    const newVal = (body as any)[key];
+                    const oldVal = originalData[key];
+                    
+                    // Simple comparison
+                    if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
+                        // Special case for date_of_birth where one might be empty string and other undefined/null
+                        if (!newVal && !oldVal) return;
+                        changes[key] = { old: oldVal, new: newVal };
+                    }
+                });
+            }
+
+            await logAudit('UPDATE', 'MEMBER', id as string, formValues.name, profile, changes, `Mengubah data anggota: ${formValues.name}`);
 
             // 6. Sukses Toast Update
             toast.success('Data berhasil diperbarui', { id: toastId });

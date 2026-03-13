@@ -5,6 +5,7 @@ import {
     Users,
     ShoppingCart,
     FileText,
+    ClipboardList,
     Menu,
     X,
     ChevronRight,
@@ -53,6 +54,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     }
     if (profile?.status === 0 || profile?.status === 1) {
         navItems.push({ label: 'Rekap', path: '/rekap', icon: FileText });
+        navItems.push({ label: 'Audit Log', path: '/audit-log', icon: ClipboardList });
         navItems.push({ label: 'Users', path: '/admin/users', icon: ShieldCheck });
     }
 

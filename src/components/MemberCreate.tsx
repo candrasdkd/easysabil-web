@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
+import { logAudit } from '../utils/auditLogger';
 
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
@@ -195,11 +196,14 @@ export default function MemberCreate() {
 
             const cleanBody = Object.fromEntries(Object.entries(body).filter(([_, v]) => v !== undefined));
 
-            const { error } = await addDoc(collection(db, 'sensus'), cleanBody).then(() => ({ error: null })).catch(err => ({ error: err }));
+            const { error, id: newDocId } = await addDoc(collection(db, 'sensus'), cleanBody).then(docRef => ({ error: null, id: docRef.id })).catch(err => ({ error: err, id: null }));
             if (error) throw error;
             // console.log(error);
             // Sukses toast update
             toast.success('Data berhasil disimpan', { id: toastId });
+
+            // Audit Log
+            await logAudit('CREATE', 'MEMBER', newDocId as string, formValues.name, profile, cleanBody, 'Menambahkan anggota baru');
 
             setFormValues(INITIAL_FORM_VALUES);
             setFamilySearch('');
