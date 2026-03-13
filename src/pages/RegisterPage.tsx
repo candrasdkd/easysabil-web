@@ -26,10 +26,20 @@ export default function RegisterPage() {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
+    // Status yang NOT butuh pilih kelompok
+    const needsKelompok = status === 3 || status === 5;
+
+    const handleStatusChange = (val: number) => {
+        setStatus(val);
+        // Reset kelompok kalau tidak diperlukan
+        if (val === 2 || val === 4) setKelompok('');
+    };
+
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         if (password !== confirmPassword) { toast.error("Password tidak cocok!"); return; }
-        if (status === '' || !kelompok) { toast.error("Silakan pilih status dan kelompok!"); return; }
+        if (status === '') { toast.error("Silakan pilih status!"); return; }
+        if (needsKelompok && !kelompok) { toast.error("Silakan pilih kelompok!"); return; }
 
         setLoading(true);
         try {
@@ -37,7 +47,7 @@ export default function RegisterPage() {
             const user = userCredential.user;
             await setDoc(doc(db, 'users', user.uid), {
                 uid: user.uid, email,
-                status: Number(status), kelompok,
+                status: Number(status), kelompok: kelompok || '',
                 isActive: false, createdAt: new Date()
             });
             toast.success("Registrasi berhasil! Menunggu persetujuan admin.");
@@ -154,7 +164,7 @@ export default function RegisterPage() {
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Status Pengurus</label>
                             <div className="relative">
-                                <select required value={status} onChange={(e) => setStatus(Number(e.target.value))}
+                                <select required value={status} onChange={(e) => handleStatusChange(Number(e.target.value))}
                                     className={inputClass + " appearance-none pr-10"}>
                                     <option value="" disabled>Pilih Status</option>
                                     {STATUS_OPTIONS.map(opt => (
@@ -165,7 +175,8 @@ export default function RegisterPage() {
                             </div>
                         </div>
 
-                        {/* Kelompok */}
+                        {/* Kelompok — hanya tampil untuk Pengurus Kelompok & Muda/i Kelompok */}
+                        {needsKelompok && (
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Kelompok</label>
                             <div className="relative">
@@ -179,6 +190,7 @@ export default function RegisterPage() {
                                 <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                             </div>
                         </div>
+                        )}
 
                         {/* Submit */}
                         <div className="pt-2">
