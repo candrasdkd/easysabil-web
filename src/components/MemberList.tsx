@@ -30,6 +30,7 @@ import {
 import { type Member } from '../types/Member';
 import { useFamiliesStore } from '../store/familiesStore';
 import { logAudit } from '../utils/auditLogger';
+import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
 
 dayjs.locale('id');
 
@@ -259,6 +260,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         deleteDoc(doc(db, 'sensus', member.uuid))
             .then(async () => {
                 await logAudit('DELETE', 'MEMBER', member.uuid, member.name, profile, null, `Menghapus anggota: ${member.name}`);
+                
+                useMembersStore.getState().invalidate();
+                useRoleMembersStore.getState().invalidate();
+
                 toast.success('Data berhasil dihapus', { id: toastId });
                 refreshMembers();
             })
@@ -528,6 +533,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 await chBatch.commit();
             }
 
+            useMembersStore.getState().invalidate();
+            useRoleMembersStore.getState().invalidate();
+
             toast.success(`${recordsToImport.length} data berhasil diimport`, { id: toastId });
             setIsImportModalOpen(false);
             refreshMembers();
@@ -615,6 +623,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 }
                 await chBatch.commit();
             }
+
+            useMembersStore.getState().invalidate();
+            useRoleMembersStore.getState().invalidate();
 
             toast.success(`${membersToDelete.length} data berhasil dibatalkan (dihapus)`, { id: toastId });
             setIsImportModalOpen(false);

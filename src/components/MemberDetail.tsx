@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 // import useNotifications from '../hooks/useNotifications/useNotifications'; // Hapus ini
 import { type Member } from '../types/Member';
+import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
 
 dayjs.locale('id');
 
@@ -110,6 +111,9 @@ export default function MemberShow() {
         setIsLoading(true);
         try {
             await deleteDoc(doc(db, 'sensus', member.uuid));
+
+            useMembersStore.getState().invalidate();
+            useRoleMembersStore.getState().invalidate();
 
             // 6. Sukses hapus (update toast loading jadi sukses)
             toast.success('Data berhasil dihapus', { id: toastId });

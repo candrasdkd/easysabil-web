@@ -25,6 +25,7 @@ import {
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
+import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
 
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
@@ -282,6 +283,9 @@ export default function MemberEdit() {
             }
 
             await logAudit('UPDATE', 'MEMBER', id as string, formValues.name, profile, changes, `Mengubah data anggota: ${formValues.name}`);
+
+            useMembersStore.getState().invalidate();
+            useRoleMembersStore.getState().invalidate();
 
             // 6. Sukses Toast Update
             toast.success('Data berhasil diperbarui', { id: toastId });

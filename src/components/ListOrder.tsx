@@ -59,7 +59,7 @@ const OrderListPage: React.FC = () => {
 
     const {
         dataOrder, loading, error, uploading,
-        saveOrder, deleteOrder, updatePayment
+        fetchDataOrder, saveOrder, deleteOrder, updatePayment
     } = useOrders(settingFilter.category.id, showAllData);
 
     const { dataDropdownSensus, dataDropdownCategory } = useOrderDropdowns();
@@ -201,6 +201,7 @@ const OrderListPage: React.FC = () => {
             setModalCreate(false);
             setModalUpdate(false);
             resetForm();
+            fetchDataOrder();
         } else {
             alert(result.error);
         }
@@ -216,6 +217,7 @@ const OrderListPage: React.FC = () => {
             setActualPricePay("");
             setQuickPayMethod("Cash");
             setQuickPayHolder("Fachih");
+            fetchDataOrder();
         } else {
             alert(result.error);
         }
@@ -227,6 +229,7 @@ const OrderListPage: React.FC = () => {
         if (result.success) {
             setModalDelete(false);
             setDeleteId(null);
+            fetchDataOrder();
         } else {
             alert(result.error);
         }

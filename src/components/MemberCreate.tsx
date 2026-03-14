@@ -22,6 +22,7 @@ import {
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
+import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
 
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
@@ -204,6 +205,9 @@ export default function MemberCreate() {
 
             // Audit Log
             await logAudit('CREATE', 'MEMBER', newDocId as string, formValues.name, profile, cleanBody, 'Menambahkan anggota baru');
+
+            useMembersStore.getState().invalidate();
+            useRoleMembersStore.getState().invalidate();
 
             setFormValues(INITIAL_FORM_VALUES);
             setFamilySearch('');
