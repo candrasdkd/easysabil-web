@@ -6,7 +6,7 @@ import {
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Plus, Pencil, Trash2, X, Check, Users, Download, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, Users, Download, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ChevronDown, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useFamiliesStore } from '../store/familiesStore';
@@ -367,6 +367,14 @@ export default function FamiliesPage() {
                 </div>
                 {canEdit && (
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={refreshStore}
+                            className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold rounded-xl text-sm transition-all"
+                            title="Refresh Data"
+                        >
+                            <RefreshCw size={16} className={loading && !isInitialized ? "animate-spin" : ""} />
+                            <span className="hidden sm:inline">Refresh</span>
+                        </button>
                         <button
                             onClick={() => setIsImportModalOpen(true)}
                             className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 hover:bg-emerald-100 font-semibold rounded-xl text-sm transition-all"
