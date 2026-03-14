@@ -260,7 +260,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         deleteDoc(doc(db, 'sensus', member.uuid))
             .then(async () => {
                 await logAudit('DELETE', 'MEMBER', member.uuid, member.name, profile, null, `Menghapus anggota: ${member.name}`);
-                
+
                 useMembersStore.getState().invalidate();
                 useRoleMembersStore.getState().invalidate();
 
