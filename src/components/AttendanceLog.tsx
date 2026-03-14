@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'fireb
 import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import {
     ChevronLeft, ChevronRight, Loader2, Download, Share2,
     X, CheckCircle2, Users, CalendarDays
@@ -155,7 +155,6 @@ export default function MonthlyAttendance() {
     return (
         // Padding bottom besar di mobile untuk tombol floating, padding standard di desktop
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-32 md:pb-12">
-            <Toaster position="top-center" />
 
             {/* ================= HEADER AREA ================= */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">

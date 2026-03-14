@@ -5,7 +5,7 @@ import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 // 1. Import Toast
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import {
     ArrowLeft,
     Edit,
@@ -145,8 +145,6 @@ export default function MemberShow() {
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
-            {/* 9. Pasang Toaster */}
-            <Toaster position="top-center" />
 
             {/* Header Navigation */}
             <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">

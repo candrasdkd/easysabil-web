@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import {
     Search, Loader2, AlertCircle, TrendingUp, ShoppingBag, ShieldOff
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 
 import { useOrders, useOrderDropdowns } from "../hooks/useOrders";
@@ -172,14 +173,15 @@ const OrderListPage: React.FC = () => {
 
     const handleSaveOrder = async () => {
         if (!dataUpload.user.id || !dataUpload.category.id || !dataUpload.totalOrder) {
-            return alert("⚠️ Mohon lengkapi: Nama Pemesan, Kategori, dan Jumlah Pesanan.");
+            toast.error("Mohon lengkapi: Nama Pemesan, Kategori, dan Jumlah Pesanan.");
+            return;
         }
 
         if (dataUpload.isPayment) {
-            if (!dataUpload.moneyHolder?.trim()) return alert("⚠️ Harap pilih siapa 'Pemegang Uang'.");
-            if (!dataUpload.paymentMethod?.trim()) return alert("⚠️ Harap pilih 'Metode Pembayaran'.");
+            if (!dataUpload.moneyHolder?.trim()) return toast.error("Harap pilih siapa 'Pemegang Uang'.");
+            if (!dataUpload.paymentMethod?.trim()) return toast.error("Harap pilih 'Metode Pembayaran'.");
             const cleanPrice = String(dataUpload.actualPrice).replace(/[^0-9]/g, "");
-            if (!cleanPrice || parseInt(cleanPrice, 10) <= 0) return alert("⚠️ Harap masukkan 'Nominal Uang' yang diterima.");
+            if (!cleanPrice || parseInt(cleanPrice, 10) <= 0) return toast.error("Harap masukkan 'Nominal Uang' yang diterima.");
         }
 
         const body = {
@@ -198,28 +200,33 @@ const OrderListPage: React.FC = () => {
 
         const result = await saveOrder(body, modalUpdate, dataUpload.idCard);
         if (result.success) {
+            toast.success(modalUpdate ? "Pesanan berhasil diperbarui" : "Pesanan berhasil ditambahkan");
             setModalCreate(false);
             setModalUpdate(false);
             resetForm();
             fetchDataOrder();
         } else {
-            alert(result.error);
+            toast.error(result.error || "Gagal menyimpan pesanan");
         }
     };
 
     const handleQuickPay = async () => {
-        if (!isExactChange && !actualPricePay) return alert("Masukkan jumlah uang");
+        if (!isExactChange && !actualPricePay) {
+            toast.error("Masukkan jumlah uang");
+            return;
+        }
         const numericPrice = isExactChange ? paymentDetail.price : parseInt(actualPricePay.replace(/[^0-9]/g, ""), 10);
 
         const result = await updatePayment(paymentDetail.id, numericPrice, quickPayHolder, quickPayMethod);
         if (result.success) {
+            toast.success("Pembayaran berhasil dikonfirmasi");
             setModalPayment(false);
             setActualPricePay("");
             setQuickPayMethod("Cash");
             setQuickPayHolder("Fachih");
             fetchDataOrder();
         } else {
-            alert(result.error);
+            toast.error(result.error || "Gagal mengkonfirmasi pembayaran");
         }
     };
 
@@ -227,11 +234,12 @@ const OrderListPage: React.FC = () => {
         if (!deleteId) return;
         const result = await deleteOrder(deleteId);
         if (result.success) {
+            toast.success("Pesanan berhasil dihapus");
             setModalDelete(false);
             setDeleteId(null);
             fetchDataOrder();
         } else {
-            alert(result.error);
+            toast.error(result.error || "Gagal menghapus pesanan");
         }
     };
 
@@ -267,7 +275,7 @@ const OrderListPage: React.FC = () => {
 
         text += `\n=========================\n*📊 RINGKASAN KEUANGAN*\n📦 Total Barang: ${stats.totalItems} pcs\n💰 Potensi Omzet: ${formatRupiah(stats.totalValue)}\n-------------------------\n💵 Uang Masuk: ${formatRupiah(stats.totalReceived)}\n${stats.gap > 0 ? `⚠️ *Belum Tertagih: ${formatRupiah(stats.gap)}*\n` : '✨ *STATUS: LUNAS SEMUA* ✨\n'}`;
 
-        navigator.clipboard.writeText(text).then(() => alert("Laporan berhasil disalin!")).catch(() => alert("Gagal menyalin teks."));
+        navigator.clipboard.writeText(text).then(() => toast.success("Laporan berhasil disalin!")).catch(() => toast.error("Gagal menyalin teks."));
     };
 
     useEffect(() => {

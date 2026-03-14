@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { useParams } from 'react-router';
 import {
@@ -313,8 +313,6 @@ export default function MemberEdit() {
     // --- RENDER FORM ---
     return (
         <div className="min-h-screen bg-slate-50 pb-20 pt-8 px-4 sm:px-6">
-            {/* 9. Toaster untuk Main Form */}
-            <Toaster position="top-center" />
 
             <div className="max-w-4xl mx-auto">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
