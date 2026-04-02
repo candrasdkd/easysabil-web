@@ -13,6 +13,7 @@ export default function AdminUsersPage() {
     const { profile: currentUserProfile, user: currentUser } = useAuth();
 
     const isSuperAdmin = currentUserProfile?.status === 0;
+    const isAdmin = currentUserProfile?.status === 1;
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -22,7 +23,7 @@ export default function AdminUsersPage() {
             querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data() as UserProfile;
                 if (data.uid === currentUser?.uid) return;
-                if (isSuperAdmin) {
+                if (isSuperAdmin || isAdmin) {
                     fetchedUsers.push(data);
                 } else {
                     if (data.status !== 0 && data.kelompok === currentUserProfile?.kelompok) {
