@@ -108,15 +108,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const resetPassword = async (email: string) => {
-        // Check if email exists in Firestore users collection first
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', email));
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) {
-            const err: any = new Error('Email tidak terdaftar.');
-            err.code = 'auth/user-not-found';
-            throw err;
-        }
         await sendPasswordResetEmail(auth, email);
     };
 

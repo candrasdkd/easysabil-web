@@ -162,7 +162,7 @@ const processSensusData = (members: Member[]) => {
 };
 
 // --- KOMPONEN UTAMA ---
-const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_) => {
+const TabelSensus = forwardRef<HTMLDivElement, TableProps>((props, ref) => {
     const printRef = useRef<HTMLDivElement>(null);
     const { members, loading, isInitialized, fetchMembers } = useMembersStore();
 
