@@ -10,6 +10,7 @@ import { Plus, Pencil, Trash2, X, Check, Users, Download, Upload, ChevronLeft, C
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useFamiliesStore } from '../store/familiesStore';
+import { logAudit } from '../utils/auditLogger';
 
 const KELOMPOK_OPTIONS = ['Kelompok 1', 'Kelompok 2', 'Kelompok 3', 'Kelompok 4', 'Kelompok 5'];
 const INITIAL_PAGE_SIZE = 15;
@@ -82,12 +83,14 @@ export default function FamiliesPage() {
                     name: form.name.trim(),
                     kelompok: form.kelompok,
                 });
+                await logAudit('UPDATE', 'FAMILY', editingId, form.name.trim(), profile, { name: form.name.trim(), kelompok: form.kelompok }, `Mengubah data keluarga: ${form.name.trim()}`);
                 toast.success('Keluarga berhasil diperbarui');
             } else {
-                await addDoc(collection(db, 'families'), {
+                const docRef = await addDoc(collection(db, 'families'), {
                     name: form.name.trim(),
                     kelompok: form.kelompok,
                 });
+                await logAudit('CREATE', 'FAMILY', docRef.id, form.name.trim(), profile, { name: form.name.trim(), kelompok: form.kelompok }, `Menambahkan keluarga baru: ${form.name.trim()}`);
                 toast.success('Keluarga berhasil ditambahkan');
             }
             setShowModal(false);
@@ -105,6 +108,7 @@ export default function FamiliesPage() {
         setDeletingId(f.id);
         try {
             await deleteDoc(doc(db, 'families', f.id));
+            await logAudit('DELETE', 'FAMILY', f.id, f.name, profile, null, `Menghapus keluarga: ${f.name}`);
             toast.success('Keluarga berhasil dihapus');
             refreshStore();
         } finally {

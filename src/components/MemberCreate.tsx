@@ -17,7 +17,8 @@ import {
     Users,
     GraduationCap,
     Tag,
-    HandHeart
+    HandHeart,
+    ListOrdered
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
@@ -60,7 +61,8 @@ export default function MemberCreate() {
         kelompok: '',
         is_educate: false,
         is_duafa: false,
-        age: '0 Bulan'
+        age: '0 Bulan',
+        order: 99
     };
 
     const [formValues, setFormValues] = useState(INITIAL_FORM_VALUES);
@@ -94,6 +96,11 @@ export default function MemberCreate() {
             }
         };
         fetchKeluarga();
+
+        // Auto-set kelompok for status 3/5 users
+        if (profile && (profile.status === 3 || profile.status === 5) && profile.kelompok) {
+            setFormValues(prev => ({ ...prev, kelompok: profile.kelompok }));
+        }
     }, [profile]);
 
     useEffect(() => {
@@ -129,6 +136,10 @@ export default function MemberCreate() {
             finalValue = (e.target as HTMLInputElement).checked;
         }
 
+        if (name === 'order') {
+            finalValue = value === '' ? null : parseInt(value);
+        }
+
         setFormValues(prev => {
             const newState = { ...prev, [name]: finalValue };
             if (name === 'date_of_birth') {
@@ -153,12 +164,13 @@ export default function MemberCreate() {
         const errors: string[] = [];
         if (!formValues.name?.trim()) errors.push("Nama lengkap wajib diisi");
         if (!formValues.gender) errors.push("Jenis kelamin wajib dipilih");
-        
+        if (!formValues.kelompok) errors.push("Kelompok wajib dipilih");
+        if (!formValues.education) errors.push("Pendidikan/Jenjang wajib dipilih");
+        if (!formValues.marriage_status) errors.push("Status pernikahan wajib dipilih");
+
         if (!formValues.is_educate) {
             if (!formValues.keluarga) errors.push("Keluarga belum dipilih");
             if (!formValues.date_of_birth) errors.push("Tanggal lahir wajib diisi");
-            if (!formValues.education) errors.push("Pendidikan/Jenjang wajib dipilih");
-            if (!formValues.marriage_status) errors.push("Status pernikahan wajib dipilih");
         }
         return errors;
     };
@@ -192,6 +204,7 @@ export default function MemberCreate() {
                 is_educate: formValues.is_educate,
                 is_duafa: formValues.is_duafa,
                 is_active: true,
+                order: formValues.order,
                 created_at: new Date().toISOString(),
             };
 
@@ -204,7 +217,7 @@ export default function MemberCreate() {
             toast.success('Data berhasil disimpan', { id: toastId });
 
             // Audit Log
-            await logAudit('CREATE', 'MEMBER', newDocId as string, formValues.name, profile, cleanBody, 'Menambahkan anggota baru');
+            await logAudit('CREATE', 'MEMBER', newDocId as string, formValues.name, profile, cleanBody, `Menambahkan anggota baru: ${formValues.name}`);
 
             useMembersStore.getState().invalidate();
             useRoleMembersStore.getState().invalidate();
@@ -273,7 +286,7 @@ export default function MemberCreate() {
 
                             <div className="md:col-span-1">
                                 <Label required>Nama Lengkap</Label>
-                                <input type="text" name="name" value={formValues.name} onChange={handleChange} placeholder="Sesuai KTP / KK" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none" />
+                                <input type="text" name="name" required value={formValues.name} onChange={handleChange} placeholder="Sesuai KTP / KK" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none" />
                             </div>
 
                             {!formValues.is_educate && (
@@ -372,7 +385,7 @@ export default function MemberCreate() {
                             <div>
                                 <Label required>Jenis Kelamin</Label>
                                 <div className="relative">
-                                    <select name="gender" value={formValues.gender} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
+                                    <select name="gender" required value={formValues.gender} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
                                         <option value="">-- Pilih --</option>
                                         <option value="Laki - Laki">Laki - Laki</option>
                                         <option value="Perempuan">Perempuan</option>
@@ -393,9 +406,9 @@ export default function MemberCreate() {
                             {/* Kelompok */}
                             {profile?.status !== 3 && profile?.status !== 5 && (
                                 <div className="md:col-span-2">
-                                    <Label>Kelompok</Label>
+                                    <Label required>Kelompok</Label>
                                     <div className="relative">
-                                        <select name="kelompok" value={formValues.kelompok} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
+                                        <select name="kelompok" required value={formValues.kelompok} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
                                             <option value="">-- Pilih Kelompok --</option>
                                             {Array.from(new Set(keluargaOptions.map(f => f.kelompok))).filter(Boolean).sort().map(kelompok => (
                                                 <option key={kelompok} value={kelompok}>{kelompok}</option>
@@ -406,39 +419,55 @@ export default function MemberCreate() {
                                 </div>
                             )}
 
-                            {!formValues.is_educate && (
-                                <div>
-                                    <Label required>Jenjang Pembinaan</Label>
-                                    <div className="relative">
-                                        <select name="education" value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
-                                            <option value="">-- Pilih Jenjang --</option>
-                                            <option value="Batita">Batita (0-3 Tahun)</option>
-                                            <option value="Paud">Paud (3-5 Tahun)</option>
-                                            <option value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</option>
-                                            <option value="Pra Remaja">Pra Remaja (12-15 Tahun)</option>
-                                            <option value="Remaja">Remaja (15-19 Tahun)</option>
-                                            <option value="Pra Nikah">Pra Nikah (19-30 Tahun)</option>
-                                            <option value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</option>
-                                            <option value="Lansia">Lansia (70+ Tahun)</option>
-                                        </select>
-                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                    </div>
-                                </div>
-                            )}
+                            {/* Jenjang & Status Pernikahan */}
 
+                            <div>
+                                <Label required>Jenjang Pembinaan</Label>
+                                <div className="relative">
+                                    <select name="education" required value={formValues.education} onChange={handleChange} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none pr-10">
+                                        <option value="">-- Pilih Jenjang --</option>
+                                        <option value="Batita">Batita (0-3 Tahun)</option>
+                                        <option value="Paud">Paud (3-5 Tahun)</option>
+                                        <option value="Cabe Rawit">Cabe Rawit (5-12 Tahun)</option>
+                                        <option value="Pra Remaja">Pra Remaja (12-15 Tahun)</option>
+                                        <option value="Remaja">Remaja (15-19 Tahun)</option>
+                                        <option value="Pra Nikah">Pra Nikah (19-30 Tahun)</option>
+                                        <option value="Dewasa">Dewasa (Sudah Menikah / 30-60 Tahun)</option>
+                                        <option value="Lansia">Lansia (70+ Tahun)</option>
+                                    </select>
+                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <Label required>Status Pernikahan</Label>
+                                <div className="relative">
+                                    <Heart className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <select name="marriage_status" required value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none">
+                                        <option value="">-- Pilih Status --</option>
+                                        <option value="Belum Menikah">Belum Menikah</option>
+                                        <option value="Menikah">Menikah</option>
+                                        <option value="Janda">Janda</option>
+                                        <option value="Duda">Duda</option>
+                                    </select>
+                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
+                            </div>
+
+                            {/* --- INPUT URUTAN --- */}
                             {!formValues.is_educate && (
-                                <div>
-                                    <Label required>Status Pernikahan</Label>
+                                <div className="md:col-span-2">
+                                    <Label>Urutan dalam Absen</Label>
                                     <div className="relative">
-                                        <Heart className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                                        <select name="marriage_status" value={formValues.marriage_status} onChange={handleChange} className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none">
-                                            <option value="">-- Pilih Status --</option>
-                                            <option value="Belum Menikah">Belum Menikah</option>
-                                            <option value="Menikah">Menikah</option>
-                                            <option value="Janda">Janda</option>
-                                            <option value="Duda">Duda</option>
-                                        </select>
-                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        <input
+                                            type="number"
+                                            name="order"
+                                            value={formValues.order ?? ''}
+                                            onChange={handleChange}
+                                            placeholder="Contoh: 1 (Kepala Keluarga), 99 (Anggota), dst"
+                                            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                        <ListOrdered className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                     </div>
                                 </div>
                             )}

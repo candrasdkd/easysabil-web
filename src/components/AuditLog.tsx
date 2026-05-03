@@ -259,8 +259,14 @@ export default function AuditLog() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="text-sm font-medium text-slate-800">
-                                                {log.details || `${log.action} ${log.entity} - ${log.entity_name}`}
+                                                {log.details || `${log.action} ${log.entity}`}
                                             </div>
+                                            {log.entity_name && (!log.details || !log.details.toLowerCase().includes(log.entity_name.toLowerCase())) && (
+                                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                                    <span className="opacity-70">Target:</span>
+                                                    <span className="font-semibold text-slate-600">{log.entity_name}</span>
+                                                </div>
+                                            )}
                                             {log.action === 'UPDATE' && formatChanges(log.changes)}
                                         </td>
                                     </tr>

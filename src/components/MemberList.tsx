@@ -97,6 +97,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     // Kelompok Filter
     const [selectedKelompok, setSelectedKelompok] = useState<string>(() => getSavedState('selectedKelompok', ''));
 
+    // Educate Filter
+    const [educateFilter, setEducateFilter] = useState<'Semua' | 'Jamaah' | 'Binaan'>(() => getSavedState('educateFilter', 'Semua'));
+
     // Data State: families dari store (ter-cache, tidak re-fetch tiap navigasi)
     const { families: familiesFromStore, fetchFamilies } = useFamiliesStore();
     const listFamily = familiesFromStore as any as Family[];
@@ -127,10 +130,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             memberStatus,
             selectedFamily,
             familySearchKeyword,
-            selectedKelompok
+            selectedKelompok,
+            educateFilter
         };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
-    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok]);
+    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok, educateFilter]);
 
     // --- Logic Helper ---
     const formatAge = (dob: string | null | undefined) => {
@@ -168,15 +172,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     // Filter Logic
     const processedMembers = useMemo(() => {
-        let filtered = members.filter(m => !m.is_educate);
+        let filtered = [...members];
+
+        if (educateFilter === 'Jamaah') filtered = filtered.filter(m => !m.is_educate);
+        if (educateFilter === 'Binaan') filtered = filtered.filter(m => m.is_educate);
 
         if (memberStatus === 'Aktif') filtered = filtered.filter(m => m.is_active);
         if (memberStatus === 'Tidak Aktif') filtered = filtered.filter(m => !m.is_active);
         if (selectedFamily) filtered = filtered.filter(m => m.family_name === selectedFamily);
         if (selectedKelompok) {
-            // Kita filter berdasarkan keluarga anggota ini yang punya kelompok = selectedKelompok
+            // Kita filter berdasarkan m.kelompok (langsung) ATAU keluarga anggota yang punya kelompok = selectedKelompok
             const allowedFamilyNames = listFamily.filter(f => f.kelompok === selectedKelompok).map(f => f.name);
-            filtered = filtered.filter(m => allowedFamilyNames.includes(m.family_name || ''));
+            filtered = filtered.filter(m => m.kelompok === selectedKelompok || allowedFamilyNames.includes(m.family_name || ''));
         }
 
         if (selectedGender.length) filtered = filtered.filter(m => selectedGender.includes(m.gender));
@@ -217,7 +224,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
             return sortConfig.direction === 'asc' ? comparison : -comparison;
         });
-
         return filtered;
     }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily, selectedKelompok, listFamily]);
 
@@ -242,6 +248,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         setSelectedFamily('');
         setFamilySearchKeyword('');
         setSelectedKelompok('');
+        setEducateFilter('Semua');
         setSearchText('');
         setCurrentPage(1);
         sessionStorage.removeItem(STORAGE_KEY);
@@ -752,13 +759,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <button
                         onClick={() => setIsFilterOpen(true)}
                         className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
-                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily)
+                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily || educateFilter !== 'Semua')
                                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
                         <Filter size={18} />
                         <span className="hidden sm:inline">Filter</span>
-                        {(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily)
+                        {(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily || educateFilter !== 'Semua')
                             ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-bold sm:hidden">!</span>
                             : null}
                     </button>
@@ -829,6 +836,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                             <div className="text-xs text-slate-400 font-normal mt-0.5">{row.name}</div>
                                         )}
                                         {!row.is_active && <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded border border-red-200">NON-AKTIF</span>}
+                                        {row.is_educate && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200 uppercase">Binaan</span>}
                                     </td>
                                     <td className="px-6 py-4"><Badge color="blue">{row.level}</Badge></td>
                                     <td className="px-6 py-4">{row.gender}</td>
@@ -944,6 +952,23 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                         <option value="Aktif">Aktif Saja</option>
                                         <option value="Tidak Aktif">Tidak Aktif Saja</option>
                                         <option value="Semua">Semua Data</option>
+                                    </select>
+                                    <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
+                                </div>
+                            </div>
+
+                            {/* Status Binaan */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Jenis Anggota</label>
+                                <div className="relative">
+                                    <select
+                                        value={educateFilter}
+                                        onChange={(e) => setEducateFilter(e.target.value as any)}
+                                        className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
+                                    >
+                                        <option value="Semua">Semua (Jamaah & Binaan)</option>
+                                        <option value="Jamaah">Jamaah Saja (Bukan Binaan)</option>
+                                        <option value="Binaan">Binaan Saja</option>
                                     </select>
                                     <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
                                 </div>
