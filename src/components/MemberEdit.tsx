@@ -229,6 +229,9 @@ export default function MemberEdit() {
             if (name === 'date_of_birth') {
                 newState.age = value ? formatAge(value) : '-';
             }
+            if (name === 'marriage_status' && value === 'Menikah') {
+                newState.education = 'Dewasa';
+            }
             return newState;
         });
     };
