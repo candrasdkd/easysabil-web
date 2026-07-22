@@ -11,7 +11,7 @@ export interface Member {
     level: string;
     kelompok: string;
     family_name: string;
-    family_id: number;
+    family_id: string;
     is_active: boolean;
     is_educate: boolean;
     is_duafa: boolean;

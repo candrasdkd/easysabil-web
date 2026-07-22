@@ -106,9 +106,8 @@ const processSensusData = (members: Member[]) => {
         if (m.is_duafa) s.jumlahDuafa.jiwa++;
 
         if (m.family_id && !m.family_name?.startsWith('Rantau')) {
-            const familyIdStr = String(m.family_id);
-            if (!kkSets[groupIndex].has(familyIdStr)) {
-                kkSets[groupIndex].add(familyIdStr);
+            if (!kkSets[groupIndex].has(m.family_id)) {
+                kkSets[groupIndex].add(m.family_id);
                 s.jumlahKK++;
                 if (m.is_duafa) s.jumlahDuafa.keluarga++;
             }
