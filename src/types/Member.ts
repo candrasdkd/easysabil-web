@@ -17,6 +17,8 @@ export interface Member {
     is_duafa: boolean;
     created_at: string;
     order: number;
+    occupation_status?: string;
+    sambung_ngaji_status?: string;
 }
 
 export interface MemberFormState {

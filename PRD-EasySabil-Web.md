@@ -3,7 +3,7 @@
 **Repo:** [candrasdkd/easysabil-web](https://github.com/candrasdkd/easysabil-web)
 **Live:** easysabil-web.vercel.app
 **Status:** Living document — update setiap ada perubahan scope/fitur
-**Versi:** 1.2 (baseline + Firestore rules v2 + Presensi Muda/i lengkap dengan Donut Chart Rekap)
+**Versi:** 1.3 (Sensus auto-level Dewasa + Kolom Muda/i + Timestamp Absen & Floating Buttons + Excel Multi-sheet)
 **Terakhir Diperbarui:** 22 Juli 2026
 
 ---
@@ -93,6 +93,8 @@ Stack cost-effective (Firebase + Vercel free tier untuk skala komunitas kecil-me
 ### 4.1 Sensus Management
 - CRUD data keluarga (`families`) dan anggota individu (`sensus`), relasi via `family_id`/`family_name`.
 - Bulk import via Excel (`xlsx`).
+- **Otomatisasi Level Dewasa:** Ketika `marriage_status` diubah/diset ke `'Menikah'` di form tambah/edit anggota, field `level` (education) otomatis diset ke `'Dewasa'`.
+- **Swapping Kolom Adaptif per Role:** Pada daftar anggota (`MemberList.tsx`), untuk role Pengurus Muda/i (status 4 & 5), kolom `Status Nikah` dan `No` disembunyikan dan digantikan oleh `Status Pekerjaan` (`occupation_status`) & `Sambung Ngaji` (`sambung_ngaji_status`).
 - **Rollback** untuk bulk import (revert batch import terakhir) — mekanisme belum terkonfirmasi, lihat §8.
 - Filter/list data sesuai scope role & kelompok.
 
@@ -118,19 +120,20 @@ Fitur presensi anggota Muda/i yang diakses oleh status 0, 1, 4, dan 5. Tersedia 
   - Jenjang / Level (Semua / Pra Remaja / Remaja / Pra Nikah — untuk status 4 & 5; atau full range untuk 0 & 1).
   - Badge indicator jumlah filter aktif pada tombol toggle.
 - **Pencarian Jamaah:** Real-time search berdasarkan nama atau alias.
-- **Daftar Anggota:** Hanya anggota dengan `is_active = true`, diurutkan berdasarkan `order` (number).
-- **Input Status Presensi:**
+- **Daftar Anggota & Pengurutan:** Anggota aktif diurutkan berdasarkan kriteria pilihan (`Urutan No`, `Waktu Terakhir`, `Waktu Terawal`, `Nama A-Z`). Header tabel desktop dapat diklik langsung untuk mengurutkan.
+- **Input Status Presensi & Jam (Timestamp):**
   - Tombol cepat: `H` (Hadir) · `I` (Izin) · `S` (Sakit) · `A` (Alfa).
-  - Klik tombol yang sudah aktif → batalkan pilihan.
+  - **Pencatatan Jam (Timestamp):** Setiap kali status ditekan, jam absensi (`HH:mm`, contoh `"19:45"`) dicatat otomatis ke dalam `records[memberUuid].time` dan ditampilkan pada UI mobile (badge jam) & desktop (kolom Waktu).
+  - Klik tombol yang sudah aktif → batalkan pilihan & bersihkan jam.
   - **Auto-save instan:** setiap klik tombol langsung menyimpan ke Firestore (`setDoc` dengan merge). Tidak ada tombol "Submit" manual.
 - **Input Catatan / Alasan:**
   - Muncul otomatis hanya untuk status `I` (Izin) dan `S` (Sakit).
   - Auto-save dengan debounce 400ms setelah selesai mengetik.
   - Saat status berpindah ke `H`, `A`, atau dikosongkan, catatan **otomatis terhapus**.
 - **Indikator Save Status:** Dot indicator realtime — `Menyimpan…` (biru, animasi pulse) / `Tersimpan` (hijau) / `Gagal` (merah).
-- **Responsive:** Mobile = Card view tombol H/I/S/A ukuran besar (touch-friendly). Desktop = Table view.
+- **Responsive UI:** Mobile = Card view tombol H/I/S/A touch-friendly dengan penataan header & badge jam yang bersih. Desktop = Table view dengan kolom Waktu.
 
-#### 4.4.2 Mode Rekap Presensi
+#### 4.4.2 Mode Rekap Presensi & Aksi Melayang (Floating Action Buttons)
 
 - **Pilih Rentang Tanggal:** Dari–Sampai (default bulan berjalan).
 - **Filter (collapsible, auto-hidden):** Kelompok, Jenis Kelamin, Jenjang.
@@ -141,11 +144,15 @@ Fitur presensi anggota Muda/i yang diakses oleh status 0, 1, 4, dan 5. Tersedia 
 - **Ringkasan Gabungan Semua Jenjang:**
   - Donut Chart (CSS `conic-gradient`) 3 warna: 🟢 Hadir / 🟡 Izin & Sakit (I+S) / 🔴 Alfa.
   - Legenda + 3 Stat Card besar dengan jumlah presensi per kategori.
+  - Responsive breakpoint `sm:flex-row` pada laptop/desktop agar Donut Chart dan Legenda berdampingan secara horizontal.
   - Kalkulasi: `pct = (total_count / (total_members × total_sessions)) × 100`.
 - **Persentase Per Jenjang:**
   - Card per level masing-masing berisi mini Donut Chart, multi-segment progress bar, 3 stat card mini.
-- **Detail Per Anggota:** Tabel H/I/S/A + Total Sesi + % Kehadiran. Badge warna ≥80%=hijau, 50–79%=amber, <50%=merah.
-- **Export & Berbagi:** Excel (ringkasan per jenjang + detail per anggota), Share WhatsApp (teks terformat dengan emoji), Cetak PDF.
+- **Detail Per Anggota:** Tabel H/I/S/A + Total Sesi + % Kehadiran. Kartu mobile dilengkapi mini multi-bar progress bar per jamaah. Badge warna ≥80%=hijau, 50–79%=amber, <50%=merah.
+- **Floating Action Buttons (FAB):** Tombol **Excel** dan **WhatsApp Share** tampil melayang (*always-on-top*) di pojok kanan bawah layar (`fixed bottom-6 right-6`), mudah diakses di mode Input maupun Rekap.
+- **Format Excel Multi-Sheet Terstruktur:**
+  - **Absensi Sesi (Input):** Memiliki pengaturan lebar kolom otomatis (`ws['!cols']`), format status jelas (`Hadir (H)`, `Izin (I)`, dst.), dan kolom Waktu Absen.
+  - **Rekap Presensi:** Menghasilkan 2 sheet tab dalam 1 workbook — **Sheet 1 (`Rekap Jamaah`)** untuk statistik detail tiap jamaah (tipe angka murni), dan **Sheet 2 (`Ringkasan Jenjang`)** untuk statistik ringkasan per jenjang & gabungan.
 
 ### 4.5 Analytics
 - Agregasi data sensus dari Firestore, di-cache di Zustand (TTL 10 menit) — bukan real-time murni, lihat §6.
@@ -194,6 +201,7 @@ Fitur presensi anggota Muda/i yang diakses oleh status 0, 1, 4, dan 5. Tersedia 
   records: {
     [memberUuid: string]: {
       status: 'H' | 'I' | 'S' | 'A'
+      time?: string      // format "HH:mm" jam absensi diinput/diperbarui
       note?: string      // hanya untuk I & S, otomatis terhapus jika status pindah ke H/A
     }
   }
@@ -274,6 +282,7 @@ users ──(uid → created_by/updated_by)── attendance_sessions
 | 1.0 | — | Baseline PRD awal |
 | 1.1 | — | Tambah Firestore rules v2, skema data lengkap, access-matrix, open questions |
 | 1.2 | 22 Jul 2026 | §4.4 Presensi Muda/i lengkap (Input Sesi + Rekap + Donut Chart 3 kategori); skema `attendance_sessions`; access matrix + baris Presensi; tech stack: conic-gradient + Day.js locale id; resolved items §8 |
+| 1.3 | 22 Jul 2026 | Form sensus auto-level Dewasa pada status Menikah; Swapping kolom adaptif di sensus list untuk Pengurus Muda/i (`occupation_status` & `sambung_ngaji_status`); Pencatatan jam absensi (`time`); Fitur sorting presensi; Responsive layout & Donut Chart fix (`sm:flex-row`); Floating Action Buttons (Excel & WA); Format Excel 2-Sheet terstruktur dengan auto column width. |
 
 ---
 

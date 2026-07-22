@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { type Member } from '../types/Member';
 
@@ -117,6 +117,28 @@ export const useRoleMembersStore = create<RoleMembersState>((set, get) => ({
                 );
                 const byKelompok = snap.docs.map(doc => ({ uuid: doc.id, ...doc.data() })) as Member[];
                 allMembers = byKelompok.filter(m => MUDA_LEVELS.includes(m.level));
+            }
+
+            if (status === 4 || status === 5) {
+                allMembers = await Promise.all(
+                    allMembers.map(async (m) => {
+                        if (m.occupation_status || m.sambung_ngaji_status) return m;
+                        try {
+                            const mmSnap = await getDoc(doc(db, 'sensus', m.uuid, 'muda_mudi_info', 'detail'));
+                            if (mmSnap.exists()) {
+                                const mmData = mmSnap.data();
+                                return {
+                                    ...m,
+                                    occupation_status: mmData.occupation_status || '',
+                                    sambung_ngaji_status: mmData.sambung_ngaji_status || '',
+                                };
+                            }
+                        } catch (err) {
+                            console.error(`Error fetching muda_mudi_info for ${m.uuid}:`, err);
+                        }
+                        return m;
+                    })
+                );
             }
 
             set({ members: allMembers, lastFetchedAt: Date.now(), loading: false, isInitialized: true });

@@ -799,16 +799,29 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                {[
-                                    { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
-                                    { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
-                                    { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
-                                    { label: 'Umur', key: 'age', width: 'w-24' },
-                                    { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' },
-                                    { label: 'Status Nikah', key: 'marriage_status', width: 'min-w-[140px]' },
-                                    { label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' },
-                                    { label: 'No', key: 'order', width: 'w-16' },
-                                ].map((col) => (
+                                {(
+                                    profile?.status === 4 || profile?.status === 5
+                                        ? [
+                                            { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
+                                            { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
+                                            { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
+                                            { label: 'Umur', key: 'age', width: 'w-24' },
+                                            { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' },
+                                            { label: 'Status Pekerjaan', key: 'occupation_status', width: 'min-w-[160px]' },
+                                            { label: 'Sambung Ngaji', key: 'sambung_ngaji_status', width: 'min-w-[160px]' },
+                                            { label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' },
+                                        ]
+                                        : [
+                                            { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
+                                            { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
+                                            { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
+                                            { label: 'Umur', key: 'age', width: 'w-24' },
+                                            { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' },
+                                            { label: 'Status Nikah', key: 'marriage_status', width: 'min-w-[140px]' },
+                                            { label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' },
+                                            { label: 'No', key: 'order', width: 'w-16' },
+                                        ]
+                                ).map((col) => (
                                     <th
                                         key={col.key}
                                         className={`px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors ${col.width}`}
@@ -844,9 +857,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     <td className="px-6 py-4 text-slate-500">
                                         {row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-'}
                                     </td>
-                                    <td className="px-6 py-4">{row.marriage_status}</td>
+                                    {profile?.status === 4 || profile?.status === 5 ? (
+                                        <>
+                                            <td className="px-6 py-4 text-slate-600">{row.occupation_status || <span className="text-slate-300">-</span>}</td>
+                                            <td className="px-6 py-4 text-slate-600">{row.sambung_ngaji_status || <span className="text-slate-300">-</span>}</td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td className="px-6 py-4">{row.marriage_status}</td>
+                                            <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
+                                        </>
+                                    )}
                                     <td className="px-6 py-4 text-slate-500">{highlightMatch(row.family_name, searchText)}</td>
-                                    <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
 
                                     <td
                                         className="px-6 py-4 text-center sticky right-0 z-20 bg-white group-hover:bg-blue-50 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]"

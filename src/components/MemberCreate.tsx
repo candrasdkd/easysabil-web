@@ -218,6 +218,8 @@ export default function MemberCreate() {
                 is_duafa: formValues.is_duafa,
                 is_active: true,
                 order: formValues.order,
+                occupation_status: formValues.occupation_status || '',
+                sambung_ngaji_status: formValues.sambung_ngaji_status || '',
                 created_at: new Date().toISOString(),
             };
 

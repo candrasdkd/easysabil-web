@@ -292,7 +292,9 @@ export default function MemberEdit() {
                 is_educate: formValues.is_educate,
                 is_active: formValues.is_active,
                 is_duafa: formValues.is_duafa,
-                order: formValues.order
+                order: formValues.order,
+                occupation_status: formValues.occupation_status || '',
+                sambung_ngaji_status: formValues.sambung_ngaji_status || '',
             };
 
             const docRef = doc(db, 'sensus', id as string);
@@ -315,7 +317,7 @@ export default function MemberEdit() {
                 Object.keys(body).forEach(key => {
                     const newVal = (body as any)[key];
                     const oldVal = originalData[key];
-                    
+
                     // Simple comparison
                     if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
                         // Special case for date_of_birth where one might be empty string and other undefined/null

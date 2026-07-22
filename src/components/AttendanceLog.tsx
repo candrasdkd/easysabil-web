@@ -8,7 +8,7 @@ import {
     Loader2, Share2,
     X, Users, CalendarDays, FileSpreadsheet,
     FileText, Calendar as CalendarIcon, AlertCircle, Search, MessageSquare,
-    Filter, ChevronDown, ChevronUp, Check
+    Filter, ChevronDown, ChevronUp, Check, Clock, ArrowUpDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -23,6 +23,7 @@ dayjs.locale('id');
 export interface SessionRecord {
     status: 'H' | 'I' | 'S' | 'A';
     note?: string;
+    time?: string;
 }
 
 export interface AttendanceSession {
@@ -53,6 +54,8 @@ export default function AttendanceLog() {
     const [availableKelompoks, setAvailableKelompoks] = useState<string[]>([]);
     const [recordsMap, setRecordsMap] = useState<Record<string, 'H' | 'I' | 'S' | 'A'>>({});
     const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+    const [timesMap, setTimesMap] = useState<Record<string, string>>({});
+    const [sortBy, setSortBy] = useState<'order' | 'time_desc' | 'time_asc' | 'name'>('order');
     const [isSessionLoading, setIsSessionLoading] = useState<boolean>(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [sessionDocExists, setSessionDocExists] = useState<boolean>(false);
@@ -180,7 +183,8 @@ export default function AttendanceLog() {
     // --- REALTIME AUTO SAVE FUNCTION ---
     const autoSaveSession = useCallback(async (
         targetRecords: Record<string, 'H' | 'I' | 'S' | 'A'>,
-        targetNotes: Record<string, string>
+        targetNotes: Record<string, string>,
+        targetTimes: Record<string, string>
     ) => {
         if (!selectedKelompok || !inputDate || !profile) return;
         setSaveStatus('saving');
@@ -196,6 +200,9 @@ export default function AttendanceLog() {
                     const rec: SessionRecord = { status };
                     if (targetNotes[mId] && targetNotes[mId].trim()) {
                         rec.note = targetNotes[mId].trim();
+                    }
+                    if (targetTimes[mId]) {
+                        rec.time = targetTimes[mId];
                     }
                     records[mId] = rec;
                 }
@@ -253,21 +260,25 @@ export default function AttendanceLog() {
                 const data = snap.data() as AttendanceSession;
                 const rMap: Record<string, 'H' | 'I' | 'S' | 'A'> = {};
                 const nMap: Record<string, string> = {};
+                const tMap: Record<string, string> = {};
                 if (data.records) {
                     Object.entries(data.records).forEach(([mId, rec]) => {
                         if (rec && rec.status) {
                             rMap[mId] = rec.status;
                             if (rec.note) nMap[mId] = rec.note;
+                            if (rec.time) tMap[mId] = rec.time;
                         }
                     });
                 }
                 setRecordsMap(rMap);
                 setNotesMap(nMap);
+                setTimesMap(tMap);
                 setSaveStatus('saved');
             } else {
                 setSessionDocExists(false);
                 setRecordsMap({});
                 setNotesMap({});
+                setTimesMap({});
                 setSaveStatus('idle');
             }
         } catch (err) {
@@ -319,11 +330,38 @@ export default function AttendanceLog() {
             }
 
             return true;
-        }).sort((a, b) => (a.order || 99) - (b.order || 99));
-    }, [members, selectedKelompok, selectedGender, selectedLevel, profile, searchQuery]);
+        }).sort((a, b) => {
+            if (sortBy === 'time_desc') {
+                const timeA = timesMap[a.uuid] || '';
+                const timeB = timesMap[b.uuid] || '';
+                if (timeA && !timeB) return -1;
+                if (!timeA && timeB) return 1;
+                if (timeA && timeB) {
+                    const cmp = timeB.localeCompare(timeA);
+                    if (cmp !== 0) return cmp;
+                }
+                return (a.order || 99) - (b.order || 99);
+            } else if (sortBy === 'time_asc') {
+                const timeA = timesMap[a.uuid] || '';
+                const timeB = timesMap[b.uuid] || '';
+                if (timeA && !timeB) return -1;
+                if (!timeA && timeB) return 1;
+                if (timeA && timeB) {
+                    const cmp = timeA.localeCompare(timeB);
+                    if (cmp !== 0) return cmp;
+                }
+                return (a.order || 99) - (b.order || 99);
+            } else if (sortBy === 'name') {
+                return a.name.localeCompare(b.name);
+            }
+            return (a.order || 99) - (b.order || 99);
+        });
+    }, [members, selectedKelompok, selectedGender, selectedLevel, profile, searchQuery, sortBy, timesMap]);
 
     // Instant Toggle Status with Automatic Saving
     const handleToggleMemberStatus = (memberId: string, targetStatus?: 'H' | 'I' | 'S' | 'A') => {
+        const currentTime = dayjs().format('HH:mm');
+
         setRecordsMap(prev => {
             const next = { ...prev };
             const current = next[memberId];
@@ -358,7 +396,15 @@ export default function AttendanceLog() {
                 }
             }
 
-            autoSaveSession(next, nextNotes);
+            const nextTimes = { ...timesMap };
+            if (newStatus) {
+                nextTimes[memberId] = currentTime;
+            } else {
+                delete nextTimes[memberId];
+            }
+            setTimesMap(nextTimes);
+
+            autoSaveSession(next, nextNotes, nextTimes);
             return next;
         });
     };
@@ -372,7 +418,7 @@ export default function AttendanceLog() {
             clearTimeout(noteDebounceTimer.current);
         }
         noteDebounceTimer.current = setTimeout(() => {
-            autoSaveSession(recordsMap, nextNotes);
+            autoSaveSession(recordsMap, nextNotes, timesMap);
         }, 400);
     };
 
@@ -578,88 +624,141 @@ export default function AttendanceLog() {
             r.name.toLowerCase().includes(q) || (r.alias && r.alias.toLowerCase().includes(q))
         );
     }, [rekapData, searchQuery]);
-
     // --- EXPORT FUNCTIONALITIES ---
     const handleExportExcel = () => {
         if (mode === 'input') {
-            const rows = [
-                [`ABSENSI SESI ${selectedKelompok} - ${inputDate}`],
-                [`Hari: ${dayjs(inputDate).format('dddd, DD MMMM YYYY')}`],
+            const rows: (string | number)[][] = [
+                [`ABSENSI SESI PENGAJIAN ${selectedKelompok.toUpperCase()}`],
+                [`Tanggal Sesi`, dayjs(inputDate).format('dddd, DD MMMM YYYY')],
+                [`Kelompok`, selectedKelompok],
                 [''],
-                ['No', 'Nama Lengkap', 'Alias', 'Level', 'Kelompok', 'Status Absensi', 'Catatan / Alasan']
+                ['No', 'Nama Lengkap', 'Alias', 'Jenjang / Level', 'Kelompok', 'Status Presensi', 'Waktu Absen', 'Catatan / Alasan']
             ];
 
             filteredInputMembers.forEach((m, idx) => {
-                const status = recordsMap[m.uuid] || 'Belum Diisi';
+                const rawStatus = recordsMap[m.uuid];
+                const statusLabel =
+                    rawStatus === 'H' ? 'Hadir (H)' :
+                    rawStatus === 'I' ? 'Izin (I)' :
+                    rawStatus === 'S' ? 'Sakit (S)' :
+                    rawStatus === 'A' ? 'Alfa (A)' : 'Belum Diisi';
+
+                const time = timesMap[m.uuid] || '-';
                 const note = notesMap[m.uuid] || '-';
                 rows.push([
-                    String(idx + 1),
+                    idx + 1,
                     m.name,
                     m.alias || '-',
                     m.level || '-',
                     m.kelompok || '-',
-                    status,
+                    statusLabel,
+                    time,
                     note
                 ]);
             });
 
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [
+                { wch: 6 },   // No
+                { wch: 28 },  // Nama Lengkap
+                { wch: 18 },  // Alias
+                { wch: 18 },  // Jenjang
+                { wch: 18 },  // Kelompok
+                { wch: 16 },  // Status Presensi
+                { wch: 14 },  // Waktu Absen
+                { wch: 32 }   // Catatan / Alasan
+            ];
+
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Absensi Sesi');
-            saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Absensi_Sesi_${selectedKelompok}_${inputDate}.xlsx`);
-            toast.success("Excel Sesi berhasil diunduh");
+            XLSX.utils.book_append_sheet(wb, ws, 'Absensi Sesi');
+            saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Absensi_Sesi_${getKelompokSlug(selectedKelompok)}_${inputDate}.xlsx`);
+            toast.success("File Excel Absensi Sesi berhasil diunduh");
         } else {
-            const rows = [
-                [`REKAP KEHADIRAN ${rekapKelompok === 'SEMUA' ? 'SEMUA KELOMPOK' : rekapKelompok}`],
-                [`Periode: ${dayjs(rekapStartDate).format('DD MMM YYYY')} s/d ${dayjs(rekapEndDate).format('DD MMM YYYY')}`],
-                [`Total Sesi Dihitung: ${selectedSessionDates.length} Sesi (${selectedSessionDates.join(', ')})`],
+            // Sheet 1: Detail Jamaah
+            const detailRows: (string | number)[][] = [
+                [`REKAP KEHADIRAN JAMAAH - ${rekapKelompok === 'SEMUA' ? 'SEMUA KELOMPOK' : rekapKelompok.toUpperCase()}`],
+                [`Periode`, `${dayjs(rekapStartDate).format('DD MMMM YYYY')} s/d ${dayjs(rekapEndDate).format('DD MMMM YYYY')}`],
+                [`Total Sesi Pengajian`, `${selectedSessionDates.length} Sesi (${selectedSessionDates.join(', ')})`],
                 [''],
-                ['--- RINGKASAN KEHADIRAN PER JENJANG ---'],
-                ['Level / Jenjang', 'Total Anggota', '% Hadir', '% Izin & Sakit', '% Alfa', 'Total Hadir (H)', 'Total Izin & Sakit (I+S)', 'Total Alfa (A)'],
-                [
-                    'Gabungan Semua Level',
-                    String(overallSummary.totalMembers),
-                    `${overallSummary.pctHadir}%`,
-                    `${overallSummary.pctIzinSakit}%`,
-                    `${overallSummary.pctAlfa}%`,
-                    String(overallSummary.H),
-                    String(overallSummary.IS),
-                    String(overallSummary.A)
-                ],
-                ...levelSummaries.map(l => [
-                    l.level,
-                    String(l.totalMembers),
-                    `${l.pctHadir}%`,
-                    `${l.pctIzinSakit}%`,
-                    `${l.pctAlfa}%`,
-                    String(l.H),
-                    String(l.IS),
-                    String(l.A)
-                ]),
-                [''],
-                ['--- DETAIL PERSENTASE TIAP ANGGOTA ---'],
-                ['No', 'Nama Lengkap', 'Alias', 'Kelompok', 'Jenjang', 'Hadir (H)', 'Izin (I)', 'Sakit (S)', 'Alfa (A)', 'Total Sesi', '% Kehadiran']
+                ['No', 'Nama Lengkap', 'Alias', 'Kelompok', 'Jenjang / Level', 'Hadir (H)', 'Izin (I)', 'Sakit (S)', 'Alfa (A)', 'Total Sesi', '% Kehadiran']
             ];
 
             filteredRekapData.forEach((row, idx) => {
-                rows.push([
-                    String(idx + 1),
+                detailRows.push([
+                    idx + 1,
                     row.name,
                     row.alias || '-',
                     row.kelompok,
                     row.level,
-                    String(row.H),
-                    String(row.I),
-                    String(row.S),
-                    String(row.A),
-                    String(row.totalScheduled),
+                    row.H,
+                    row.I,
+                    row.S,
+                    row.A,
+                    row.totalScheduled,
                     `${row.percentage}%`
                 ]);
             });
 
+            const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+            wsDetail['!cols'] = [
+                { wch: 6 },   // No
+                { wch: 28 },  // Nama
+                { wch: 18 },  // Alias
+                { wch: 18 },  // Kelompok
+                { wch: 18 },  // Jenjang
+                { wch: 12 },  // Hadir
+                { wch: 12 },  // Izin
+                { wch: 12 },  // Sakit
+                { wch: 12 },  // Alfa
+                { wch: 12 },  // Total Sesi
+                { wch: 14 }   // % Kehadiran
+            ];
+
+            // Sheet 2: Ringkasan Per Jenjang
+            const summaryRows: (string | number)[][] = [
+                [`RINGKASAN KEHADIRAN PER JENJANG / LEVEL`],
+                [`Periode`, `${dayjs(rekapStartDate).format('DD MMMM YYYY')} s/d ${dayjs(rekapEndDate).format('DD MMMM YYYY')}`],
+                [''],
+                ['Level / Jenjang', 'Total Anggota', '% Hadir', '% Izin & Sakit', '% Alfa', 'Presensi Hadir (H)', 'Presensi Izin & Sakit (I+S)', 'Presensi Alfa (A)'],
+                [
+                    'Gabungan Semua Level',
+                    overallSummary.totalMembers,
+                    `${overallSummary.pctHadir}%`,
+                    `${overallSummary.pctIzinSakit}%`,
+                    `${overallSummary.pctAlfa}%`,
+                    overallSummary.H,
+                    overallSummary.IS,
+                    overallSummary.A
+                ],
+                ...levelSummaries.map(l => [
+                    l.level,
+                    l.totalMembers,
+                    `${l.pctHadir}%`,
+                    `${l.pctIzinSakit}%`,
+                    `${l.pctAlfa}%`,
+                    l.H,
+                    l.IS,
+                    l.A
+                ])
+            ];
+
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+            wsSummary['!cols'] = [
+                { wch: 22 },  // Level
+                { wch: 16 },  // Total Anggota
+                { wch: 14 },  // % Hadir
+                { wch: 16 },  // % Izin & Sakit
+                { wch: 14 },  // % Alfa
+                { wch: 18 },  // Hadir
+                { wch: 22 },  // Izin & Sakit
+                { wch: 16 }   // Alfa
+            ];
+
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Rekap Absensi');
+            XLSX.utils.book_append_sheet(wb, wsDetail, 'Rekap Jamaah');
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Jenjang');
             saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Rekap_Absensi_${rekapKelompok}_${rekapStartDate}_${rekapEndDate}.xlsx`);
-            toast.success("Excel Rekap berhasil diunduh");
+            toast.success("File Excel Rekap berhasil diunduh (2 Sheet)");
         }
     };
 
@@ -688,10 +787,6 @@ export default function AttendanceLog() {
         setIsShareModalOpen(false);
     };
 
-    const handlePrintPDF = () => {
-        window.print();
-    };
-
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-24 md:pb-12">
             {/* Header Sticky Navigation */}
@@ -711,21 +806,19 @@ export default function AttendanceLog() {
                     <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-start md:self-auto w-full sm:w-auto">
                         <button
                             onClick={() => setMode('input')}
-                            className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
-                                mode === 'input'
+                            className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${mode === 'input'
                                     ? 'bg-blue-600 text-white shadow-md'
                                     : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                                }`}
                         >
                             <CalendarIcon size={16} /> Input Sesi
                         </button>
                         <button
                             onClick={() => setMode('rekap')}
-                            className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
-                                mode === 'rekap'
+                            className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${mode === 'rekap'
                                     ? 'bg-blue-600 text-white shadow-md'
                                     : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                                }`}
                         >
                             <FileText size={16} /> Rekap Presensi
                         </button>
@@ -758,13 +851,12 @@ export default function AttendanceLog() {
                                     <button
                                         type="button"
                                         onClick={() => setShowFilters(!showFilters)}
-                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all ${
-                                            showFilters
+                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all ${showFilters
                                                 ? 'bg-slate-100 text-slate-800 border-slate-300'
                                                 : activeFilterCount > 0
-                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                        }`}
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <Filter size={16} />
                                         {showFilters ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
@@ -842,10 +934,10 @@ export default function AttendanceLog() {
                             )}
                         </div>
 
-                        {/* Search & Counter Bar */}
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        {/* Search & Counter & Sort Bar */}
+                        <div className="space-y-3">
                             {/* SEARCH BAR */}
-                            <div className="relative flex-1">
+                            <div className="relative w-full">
                                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input
                                     type="text"
@@ -864,35 +956,50 @@ export default function AttendanceLog() {
                                 )}
                             </div>
 
-                            {/* Realtime Save Status Indicator */}
-                            <div className="flex items-center justify-between sm:justify-end gap-3 text-xs text-slate-500 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
-                                <div className="flex items-center gap-2">
-                                    <span className={`w-2.5 h-2.5 rounded-full ${
-                                        saveStatus === 'saving'
+                            {/* SORT DROPDOWN + SAVE STATUS INDICATOR */}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold text-slate-700">
+                                    <ArrowUpDown size={14} className="text-slate-400 flex-shrink-0" />
+                                    <span className="text-slate-400 hidden sm:inline">Urutkan:</span>
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value as any)}
+                                        className="bg-transparent font-bold outline-none cursor-pointer text-slate-800 text-xs"
+                                    >
+                                        <option value="order">Urutan No</option>
+                                        <option value="time_desc">Waktu Terakhir</option>
+                                        <option value="time_asc">Waktu Terawal</option>
+                                        <option value="name">Nama (A-Z)</option>
+                                    </select>
+                                </div>
+
+                                <div className="flex items-center gap-2 text-xs text-slate-500 bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm">
+                                    <span className={`w-2.5 h-2.5 rounded-full ${saveStatus === 'saving'
                                             ? 'bg-blue-500 animate-pulse'
                                             : saveStatus === 'saved'
-                                            ? 'bg-emerald-500'
-                                            : saveStatus === 'error'
-                                            ? 'bg-rose-500'
-                                            : 'bg-emerald-500'
-                                    }`} />
-                                    <span className="font-semibold text-slate-700 truncate max-w-[200px] sm:max-w-none">
+                                                ? 'bg-emerald-500'
+                                                : saveStatus === 'error'
+                                                    ? 'bg-rose-500'
+                                                    : 'bg-emerald-500'
+                                        }`} />
+                                    <span className="font-semibold text-slate-700">
                                         {saveStatus === 'saving' ? (
                                             <span className="text-blue-600 font-bold flex items-center gap-1">
-                                                <Loader2 size={12} className="animate-spin inline" /> Menyimpan Otomatis...
+                                                <Loader2 size={12} className="animate-spin inline" /> Menyimpan...
                                             </span>
                                         ) : saveStatus === 'saved' ? (
                                             <span className="text-emerald-700 font-bold flex items-center gap-1">
-                                                <Check size={14} className="inline text-emerald-600" /> Tersimpan Otomatis
+                                                <Check size={14} className="inline text-emerald-600" /> Tersimpan
                                             </span>
                                         ) : saveStatus === 'error' ? (
-                                            <span className="text-rose-600 font-bold">Gagal Menyimpan</span>
+                                            <span className="text-rose-600 font-bold">Gagal</span>
                                         ) : (
-                                            <span>{sessionDocExists ? 'Tersimpan Otomatis' : 'Sesi Baru'}</span>
+                                            <span>{sessionDocExists ? 'Tersimpan' : 'Sesi Baru'}</span>
                                         )}
                                     </span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="font-bold text-slate-800">{filteredInputMembers.length} Jamaah</span>
                                 </div>
-                                <span className="font-bold text-slate-800">{filteredInputMembers.length} Jamaah</span>
                             </div>
                         </div>
 
@@ -920,21 +1027,41 @@ export default function AttendanceLog() {
                                         return (
                                             <div
                                                 key={m.uuid}
-                                                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3"
+                                                className={`bg-white rounded-2xl p-4 border transition-all space-y-3 ${status
+                                                        ? status === 'H' ? 'border-emerald-300 bg-emerald-50/10 shadow-sm'
+                                                            : status === 'I' ? 'border-amber-300 bg-amber-50/10 shadow-sm'
+                                                                : status === 'S' ? 'border-blue-300 bg-blue-50/10 shadow-sm'
+                                                                    : 'border-rose-300 bg-rose-50/10 shadow-sm'
+                                                        : 'border-slate-200 shadow-sm'
+                                                    }`}
                                             >
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <span className="w-7 h-7 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex items-start gap-2.5 min-w-0">
+                                                        <span className="w-7 h-7 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                                                             {m.order || idx + 1}
                                                         </span>
-                                                        <div>
-                                                            <h4 className="font-bold text-slate-900 text-base leading-snug">{m.name}</h4>
-                                                            {m.alias && <p className="text-xs text-slate-400">Alias: {m.alias}</p>}
+                                                        <div className="min-w-0">
+                                                            <h4 className="font-bold text-slate-900 text-base leading-snug truncate">{m.name}</h4>
+                                                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                                                {m.alias && <span className="text-xs text-slate-400">Alias: {m.alias}</span>}
+                                                                <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                                                    {m.level}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 flex-shrink-0">
-                                                        {m.level}
-                                                    </span>
+                                                    {timesMap[m.uuid] ? (
+                                                        <div className="flex flex-col items-end flex-shrink-0">
+                                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-xs">
+                                                                <Clock size={12} className="text-blue-500" />
+                                                                {timesMap[m.uuid]}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[11px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-full border border-slate-100 flex-shrink-0">
+                                                            Belum Absen
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 {/* Mobile Touch-Friendly Status Buttons */}
@@ -942,11 +1069,10 @@ export default function AttendanceLog() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'H')}
-                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
-                                                            status === 'H'
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${status === 'H'
                                                                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 ring-2 ring-emerald-600 scale-[1.02]'
                                                                 : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-emerald-100'
-                                                        }`}
+                                                            }`}
                                                     >
                                                         <span className="text-sm">H</span>
                                                         <span className="text-[10px] font-medium opacity-80">Hadir</span>
@@ -955,11 +1081,10 @@ export default function AttendanceLog() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'I')}
-                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
-                                                            status === 'I'
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${status === 'I'
                                                                 ? 'bg-amber-500 text-white shadow-md shadow-amber-200 ring-2 ring-amber-500 scale-[1.02]'
                                                                 : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-amber-100'
-                                                        }`}
+                                                            }`}
                                                     >
                                                         <span className="text-sm">I</span>
                                                         <span className="text-[10px] font-medium opacity-80">Izin</span>
@@ -968,11 +1093,10 @@ export default function AttendanceLog() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'S')}
-                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
-                                                            status === 'S'
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${status === 'S'
                                                                 ? 'bg-blue-500 text-white shadow-md shadow-blue-200 ring-2 ring-blue-500 scale-[1.02]'
                                                                 : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-blue-100'
-                                                        }`}
+                                                            }`}
                                                     >
                                                         <span className="text-sm">S</span>
                                                         <span className="text-[10px] font-medium opacity-80">Sakit</span>
@@ -981,11 +1105,10 @@ export default function AttendanceLog() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'A')}
-                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
-                                                            status === 'A'
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${status === 'A'
                                                                 ? 'bg-rose-600 text-white shadow-md shadow-rose-200 ring-2 ring-rose-600 scale-[1.02]'
                                                                 : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-rose-100'
-                                                        }`}
+                                                            }`}
                                                     >
                                                         <span className="text-sm">A</span>
                                                         <span className="text-[10px] font-medium opacity-80">Alfa</span>
@@ -1023,11 +1146,21 @@ export default function AttendanceLog() {
                                         <table className="w-full text-left border-collapse">
                                             <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
                                                 <tr>
-                                                    <th className="p-4 w-12 text-center">No</th>
-                                                    <th className="p-4">Nama Jamaah</th>
+                                                    <th className="p-4 w-12 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setSortBy('order')}>No</th>
+                                                    <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setSortBy('name')}>Nama Jamaah</th>
                                                     <th className="p-4">Jenjang</th>
                                                     <th className="p-4">Kelompok</th>
                                                     <th className="p-4 text-center w-48">Status Presensi</th>
+                                                    <th
+                                                        className="p-4 text-center w-32 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                                                        onClick={() => setSortBy(prev => prev === 'time_desc' ? 'time_asc' : 'time_desc')}
+                                                        title="Klik untuk mengurutkan berdasarkan waktu absen"
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <span>Waktu</span>
+                                                            <ArrowUpDown size={14} className={sortBy.startsWith('time') ? 'text-blue-600 font-bold' : 'text-slate-400'} />
+                                                        </div>
+                                                    </th>
                                                     <th className="p-4 w-64">Catatan / Alasan</th>
                                                 </tr>
                                             </thead>
@@ -1035,6 +1168,7 @@ export default function AttendanceLog() {
                                                 {filteredInputMembers.map((m, idx) => {
                                                     const status = recordsMap[m.uuid];
                                                     const note = notesMap[m.uuid] || '';
+                                                    const time = timesMap[m.uuid];
                                                     const showNoteInput = status === 'I' || status === 'S';
 
                                                     return (
@@ -1059,11 +1193,10 @@ export default function AttendanceLog() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'H')}
-                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
-                                                                            status === 'H'
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${status === 'H'
                                                                                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 scale-105'
                                                                                 : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
-                                                                        }`}
+                                                                            }`}
                                                                         title="Hadir"
                                                                     >
                                                                         H
@@ -1071,11 +1204,10 @@ export default function AttendanceLog() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'I')}
-                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
-                                                                            status === 'I'
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${status === 'I'
                                                                                 ? 'bg-amber-500 text-white shadow-md shadow-amber-200 scale-105'
                                                                                 : 'bg-slate-100 text-slate-600 hover:bg-amber-50 hover:text-amber-700'
-                                                                        }`}
+                                                                            }`}
                                                                         title="Izin"
                                                                     >
                                                                         I
@@ -1083,11 +1215,10 @@ export default function AttendanceLog() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'S')}
-                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
-                                                                            status === 'S'
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${status === 'S'
                                                                                 ? 'bg-blue-500 text-white shadow-md shadow-blue-200 scale-105'
                                                                                 : 'bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700'
-                                                                        }`}
+                                                                            }`}
                                                                         title="Sakit"
                                                                     >
                                                                         S
@@ -1095,16 +1226,25 @@ export default function AttendanceLog() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleToggleMemberStatus(m.uuid, 'A')}
-                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
-                                                                            status === 'A'
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${status === 'A'
                                                                                 ? 'bg-rose-600 text-white shadow-md shadow-rose-200 scale-105'
                                                                                 : 'bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-700'
-                                                                        }`}
+                                                                            }`}
                                                                         title="Alfa"
                                                                     >
                                                                         A
                                                                     </button>
                                                                 </div>
+                                                            </td>
+                                                            <td className="p-4 text-center">
+                                                                {time ? (
+                                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 text-xs font-mono font-bold border border-slate-200">
+                                                                        <Clock size={12} className="text-slate-400" />
+                                                                        {time}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-300 italic">-</span>
+                                                                )}
                                                             </td>
                                                             <td className="p-4">
                                                                 {showNoteInput ? (
@@ -1166,13 +1306,12 @@ export default function AttendanceLog() {
                                     <button
                                         type="button"
                                         onClick={() => setShowFilters(!showFilters)}
-                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all ${
-                                            showFilters
+                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all ${showFilters
                                                 ? 'bg-slate-100 text-slate-800 border-slate-300'
                                                 : activeFilterCount > 0
-                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                        }`}
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                            }`}
                                     >
                                         <Filter size={16} />
                                         {showFilters ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
@@ -1281,11 +1420,10 @@ export default function AttendanceLog() {
                                                 key={s.date}
                                                 type="button"
                                                 onClick={() => toggleSessionDate(s.date)}
-                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
-                                                    isSelected
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${isSelected
                                                         ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
                                                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                                                }`}
+                                                    }`}
                                             >
                                                 <Check size={14} className={isSelected ? 'opacity-100' : 'opacity-0'} />
                                                 {dayjs(s.date).format('dddd, DD MMM YYYY')}
@@ -1300,21 +1438,21 @@ export default function AttendanceLog() {
                         {selectedSessionDates.length > 0 && (
                             <div className="space-y-6">
                                 {/* GABUNGAN SEMUA JENJANG (PIE / DONUT CHART CARD) */}
-                                <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 text-white rounded-2xl p-6 shadow-xl space-y-6">
+                                <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 text-white rounded-2xl p-4 sm:p-6 shadow-xl space-y-6">
                                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                                         {/* Left Header Info */}
-                                        <div className="space-y-1">
+                                        <div className="space-y-1 text-center sm:text-left">
                                             <span className="text-xs font-bold tracking-wider text-blue-400 uppercase block">Ringkasan Kehadiran Gabungan</span>
-                                            <h3 className="text-2xl font-black text-white">Semua Jenjang / Level</h3>
+                                            <h3 className="text-xl sm:text-2xl font-black text-white">Semua Jenjang / Level</h3>
                                             <p className="text-xs text-slate-300">
                                                 Total {overallSummary.totalMembers} Jamaah • {overallSummary.totalSessions} Sesi Pengajian ({overallSummary.totalExpected} Presensi Diharapkan)
                                             </p>
                                         </div>
 
                                         {/* Center: Interactive Conic Gradient Donut Chart */}
-                                        <div className="flex items-center justify-center gap-6 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm self-start lg:self-auto">
+                                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm w-full lg:w-auto">
                                             <div
-                                                className="w-36 h-36 rounded-full flex items-center justify-center shadow-lg relative flex-shrink-0"
+                                                className="w-32 h-32 sm:w-36 sm:h-36 rounded-full flex items-center justify-center shadow-lg relative flex-shrink-0"
                                                 style={{
                                                     background: `conic-gradient(
                                                         #10b981 0% ${overallSummary.pctHadir}%,
@@ -1323,14 +1461,14 @@ export default function AttendanceLog() {
                                                     )`
                                                 }}
                                             >
-                                                <div className="w-24 h-24 bg-slate-900 rounded-full flex flex-col items-center justify-center text-white shadow-inner">
-                                                    <span className="text-2xl font-black text-emerald-400">{overallSummary.pctHadir}%</span>
-                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hadir</span>
+                                                <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-900 rounded-full flex flex-col items-center justify-center text-white shadow-inner">
+                                                    <span className="text-xl sm:text-2xl font-black text-emerald-400">{overallSummary.pctHadir}%</span>
+                                                    <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hadir</span>
                                                 </div>
                                             </div>
 
                                             {/* Donut Legend */}
-                                            <div className="space-y-2 text-xs">
+                                            <div className="space-y-2 text-xs w-full sm:w-auto">
                                                 <div className="flex items-center gap-2">
                                                     <span className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0" />
                                                     <div>
@@ -1358,24 +1496,24 @@ export default function AttendanceLog() {
 
                                     {/* 3 Category Main Stat Cards */}
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                                        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between">
+                                        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between">
                                             <div>
                                                 <span className="text-[11px] font-bold text-emerald-400 block uppercase">Hadir</span>
                                                 <span className="text-2xl font-black text-white">{overallSummary.pctHadir}%</span>
                                                 <span className="text-xs text-slate-300 block mt-0.5">{overallSummary.H} / {overallSummary.totalExpected} presensi</span>
                                             </div>
-                                            <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-lg">
+                                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-base sm:text-lg">
                                                 H
                                             </div>
                                         </div>
 
-                                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between">
+                                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 sm:p-4 flex items-center justify-between">
                                             <div>
                                                 <span className="text-[11px] font-bold text-amber-400 block uppercase">Izin & Sakit</span>
                                                 <span className="text-2xl font-black text-white">{overallSummary.pctIzinSakit}%</span>
                                                 <span className="text-xs text-slate-300 block mt-0.5">{overallSummary.IS} presensi (I: {overallSummary.I}, S: {overallSummary.S})</span>
                                             </div>
-                                            <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-lg">
+                                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-base sm:text-lg">
                                                 I+S
                                             </div>
                                         </div>
@@ -1386,7 +1524,7 @@ export default function AttendanceLog() {
                                                 <span className="text-2xl font-black text-white">{overallSummary.pctAlfa}%</span>
                                                 <span className="text-xs text-slate-300 block mt-0.5">{overallSummary.A} / {overallSummary.totalExpected} presensi</span>
                                             </div>
-                                            <div className="w-12 h-12 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-black text-lg">
+                                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-black text-base sm:text-lg">
                                                 A
                                             </div>
                                         </div>
@@ -1399,15 +1537,15 @@ export default function AttendanceLog() {
                                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Persentase Kehadiran Per Jenjang / Level</h4>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {levelSummaries.map(lvl => (
-                                                <div key={lvl.level} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+                                                <div key={lvl.level} className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <h5 className="font-bold text-slate-900 text-lg">{lvl.level}</h5>
+                                                            <h5 className="font-bold text-slate-900 text-base sm:text-lg">{lvl.level}</h5>
                                                             <p className="text-xs text-slate-400">{lvl.totalMembers} Jamaah • {lvl.totalExpected} Presensi</p>
                                                         </div>
                                                         {/* Mini Conic Gradient Donut */}
                                                         <div
-                                                            className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
+                                                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
                                                             style={{
                                                                 background: `conic-gradient(
                                                                     #10b981 0% ${lvl.pctHadir}%,
@@ -1416,7 +1554,7 @@ export default function AttendanceLog() {
                                                                 )`
                                                             }}
                                                         >
-                                                            <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-[10px] font-black text-slate-800">
+                                                            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-white rounded-full flex items-center justify-center text-[10px] font-black text-slate-800">
                                                                 {lvl.pctHadir}%
                                                             </div>
                                                         </div>
@@ -1456,7 +1594,7 @@ export default function AttendanceLog() {
                         )}
 
                         {/* Search & Export Bar */}
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                             {/* SEARCH BAR REKAP */}
                             <div className="relative flex-1">
                                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -1477,29 +1615,11 @@ export default function AttendanceLog() {
                                 )}
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
-                                <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-sm">
-                                    <span>Sesi:</span>
+                            <div className="flex items-center justify-between sm:justify-end gap-2">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-sm">
+                                    <span>Total Sesi:</span>
                                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-lg">{totalScheduledDays} Sesi</span>
                                 </div>
-                                <button
-                                    onClick={handleExportExcel}
-                                    className="px-3.5 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
-                                >
-                                    <FileSpreadsheet size={16} /> Excel
-                                </button>
-                                <button
-                                    onClick={handlePrintPDF}
-                                    className="px-3.5 py-2.5 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
-                                >
-                                    <FileText size={16} /> Cetak
-                                </button>
-                                <button
-                                    onClick={() => setIsShareModalOpen(true)}
-                                    className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-200 transition-all"
-                                >
-                                    <Share2 size={16} /> WA
-                                </button>
                             </div>
                         </div>
 
@@ -1525,32 +1645,41 @@ export default function AttendanceLog() {
                                             className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3"
                                         >
                                             <div className="flex items-start justify-between gap-2">
-                                                <div className="flex items-center gap-2.5">
-                                                    <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center flex-shrink-0">
                                                         {idx + 1}
                                                     </span>
-                                                    <div>
-                                                        <h4 className="font-bold text-slate-900 text-base leading-snug">{row.name}</h4>
-                                                        {row.alias && <p className="text-xs text-slate-400">Alias: {row.alias}</p>}
+                                                    <div className="min-w-0">
+                                                        <h4 className="font-bold text-slate-900 text-base leading-snug truncate">{row.name}</h4>
+                                                        {row.alias && <p className="text-xs text-slate-400 truncate">Alias: {row.alias}</p>}
                                                     </div>
                                                 </div>
-                                                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                                                    row.percentage >= 80
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold border flex-shrink-0 ${row.percentage >= 80
                                                         ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                                                         : row.percentage >= 50
-                                                        ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                                        : 'bg-rose-100 text-rose-700 border-rose-200'
-                                                }`}>
+                                                            ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                                            : 'bg-rose-100 text-rose-700 border-rose-200'
+                                                    }`}>
                                                     {row.percentage}%
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center gap-2 text-xs">
-                                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold">{row.kelompok}</span>
-                                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold">{row.level}</span>
+                                            <div className="flex items-center justify-between text-xs pt-1">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold">{row.kelompok}</span>
+                                                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold">{row.level}</span>
+                                                </div>
+                                                <span className="text-xs text-slate-400 font-medium">Total: {row.totalScheduled} Sesi</span>
                                             </div>
 
-                                            <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-center">
+                                            {/* Mini Multi Progress Bar per Member */}
+                                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden flex">
+                                                <div className="bg-emerald-500 h-full" style={{ width: `${row.totalScheduled > 0 ? (row.H / row.totalScheduled) * 100 : 0}%` }} />
+                                                <div className="bg-amber-500 h-full" style={{ width: `${row.totalScheduled > 0 ? ((row.I + row.S) / row.totalScheduled) * 100 : 0}%` }} />
+                                                <div className="bg-rose-500 h-full" style={{ width: `${row.totalScheduled > 0 ? (row.A / row.totalScheduled) * 100 : 0}%` }} />
+                                            </div>
+
+                                            <div className="grid grid-cols-4 gap-2 pt-1 text-center">
                                                 <div className="bg-emerald-50 rounded-xl p-2 border border-emerald-100">
                                                     <span className="text-[10px] text-emerald-600 font-bold block uppercase">Hadir</span>
                                                     <span className="text-base font-black text-emerald-700">{row.H}</span>
@@ -1610,13 +1739,12 @@ export default function AttendanceLog() {
                                                         <td className="p-4 text-center font-bold text-rose-600">{row.A}</td>
                                                         <td className="p-4 text-center font-semibold text-slate-600">{row.totalScheduled}</td>
                                                         <td className="p-4 text-center">
-                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border inline-block ${
-                                                                row.percentage >= 80
+                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border inline-block ${row.percentage >= 80
                                                                     ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                                                                     : row.percentage >= 50
-                                                                    ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                                                    : 'bg-rose-100 text-rose-700 border-rose-200'
-                                                            }`}>
+                                                                        ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                                                        : 'bg-rose-100 text-rose-700 border-rose-200'
+                                                                }`}>
                                                                 {row.percentage}%
                                                             </span>
                                                         </td>
@@ -1630,6 +1758,31 @@ export default function AttendanceLog() {
                         )}
                     </div>
                 )}
+            </div>
+
+            {/* FLOATING ACTION BUTTONS (Excel & WhatsApp) */}
+            <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 sm:gap-3 animate-in slide-in-from-bottom-5">
+                {/* Excel Floating Button */}
+                <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    className="bg-white hover:bg-emerald-50 text-emerald-700 font-bold text-xs sm:text-sm px-4 py-3 rounded-full shadow-2xl border border-emerald-200 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 group ring-4 ring-slate-900/5"
+                    title="Export File Excel"
+                >
+                    <FileSpreadsheet size={18} className="text-emerald-600 group-hover:scale-110 transition-transform" />
+                    <span>Excel</span>
+                </button>
+
+                {/* WhatsApp Floating Button */}
+                <button
+                    type="button"
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4.5 py-3 rounded-full shadow-2xl shadow-emerald-600/40 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 group border border-emerald-500/30 ring-4 ring-emerald-500/20"
+                    title="Bagikan Rekap ke WhatsApp"
+                >
+                    <Share2 size={18} className="group-hover:scale-110 transition-transform" />
+                    <span>WhatsApp</span>
+                </button>
             </div>
 
             {/* Modal Share WA */}
