@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -20,12 +20,20 @@ import {
     Activity,
     ListOrdered,
     Tag,
-    HandHeart
+    HandHeart,
+    Briefcase,
+    BookOpen
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
+import {
+    OCCUPATION_STATUS_OPTIONS,
+    SAMBUNG_NGAJI_STATUS_OPTIONS,
+    isMudaMudiRole,
+    isMudaMudiLevel
+} from '../constants/mudaMudiOptions';
 
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
@@ -66,7 +74,9 @@ export default function MemberEdit() {
         age: '0 Bulan',
         is_active: true,
         is_duafa: false,
-        order: null as number | null
+        order: null as number | null,
+        occupation_status: '',
+        sambung_ngaji_status: ''
     };
 
     const [formValues, setFormValues] = useState(INITIAL_FORM_VALUES);
@@ -130,6 +140,22 @@ export default function MemberEdit() {
             }
 
             const data = docSnap.data();
+            let occupationStatus = '';
+            let sambungNgajiStatus = '';
+
+            if (isMudaMudiRole(profile?.status) && isMudaMudiLevel(data.level)) {
+                try {
+                    const mudaMudiSnap = await getDoc(doc(db, 'sensus', uuid, 'muda_mudi_info', 'detail'));
+                    if (mudaMudiSnap.exists()) {
+                        const mmData = mudaMudiSnap.data();
+                        occupationStatus = mmData.occupation_status || '';
+                        sambungNgajiStatus = mmData.sambung_ngaji_status || '';
+                    }
+                } catch (err) {
+                    console.error("Error fetching muda mudi info detail:", err);
+                }
+            }
+
             setFormValues({
                 family_id: data.family_id ? String(data.family_id) : '',
                 family_name: data.family_name || '',
@@ -144,7 +170,9 @@ export default function MemberEdit() {
                 age: data.date_of_birth ? formatAge(data.date_of_birth) : '-',
                 is_active: data.is_active ?? true,
                 is_duafa: data.is_duafa ?? false,
-                order: data.order
+                order: data.order,
+                occupation_status: occupationStatus,
+                sambung_ngaji_status: sambungNgajiStatus
             });
             setOriginalData(data);
 
@@ -158,7 +186,7 @@ export default function MemberEdit() {
             toast.error('Gagal memuat data detail');
             setIsLoadingDetail(false);
         }
-    }, []);
+    }, [profile]);
 
     // --- EFFECTS ---
     useEffect(() => {
@@ -267,6 +295,17 @@ export default function MemberEdit() {
             const docRef = doc(db, 'sensus', id as string);
             await updateDoc(docRef, body);
 
+            // Handle subcollection Muda/i info
+            if (isMudaMudiRole(profile?.status) && isMudaMudiLevel(formValues.education)) {
+                const mudaMudiData = {
+                    occupation_status: formValues.occupation_status || '',
+                    sambung_ngaji_status: formValues.sambung_ngaji_status || '',
+                    updated_at: serverTimestamp(),
+                    updated_by: profile?.uid || ''
+                };
+                await setDoc(doc(db, 'sensus', id as string, 'muda_mudi_info', 'detail'), mudaMudiData, { merge: true });
+            }
+
             // Hitung perubahan (diff)
             const changes: Record<string, { old: any, new: any }> = {};
             if (originalData) {
@@ -281,6 +320,11 @@ export default function MemberEdit() {
                         changes[key] = { old: oldVal, new: newVal };
                     }
                 });
+            }
+
+            if (isMudaMudiRole(profile?.status) && isMudaMudiLevel(formValues.education)) {
+                changes['occupation_status'] = { old: originalData?.occupation_status, new: formValues.occupation_status };
+                changes['sambung_ngaji_status'] = { old: originalData?.sambung_ngaji_status, new: formValues.sambung_ngaji_status };
             }
 
             await logAudit('UPDATE', 'MEMBER', id as string, formValues.name, profile, changes, `Mengubah data anggota: ${formValues.name}`);
@@ -563,6 +607,56 @@ export default function MemberEdit() {
                             )}
                         </div>
                     </div>
+
+                    {/* Informasi Khusus Muda/i (Pekerjaan/Pendidikan & Sambung Ngaji) */}
+                    {isMudaMudiRole(profile?.status) && isMudaMudiLevel(formValues.education) && (
+                        <div className="p-6 sm:p-8 bg-blue-50/40 border-t border-slate-100">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
+                                <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"><Briefcase size={18} /></div>
+                                Informasi Khusus Muda/i
+                            </h3>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <Label>Status Pekerjaan / Pelajar</Label>
+                                    <div className="relative">
+                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <select
+                                            name="occupation_status"
+                                            value={formValues.occupation_status}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                                        >
+                                            <option value="">-- Pilih Status --</option>
+                                            {OCCUPATION_STATUS_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <Label>Status Sambung Ngaji</Label>
+                                    <div className="relative">
+                                        <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <select
+                                            name="sambung_ngaji_status"
+                                            value={formValues.sambung_ngaji_status}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                                        >
+                                            <option value="">-- Pilih Status --</option>
+                                            {SAMBUNG_NGAJI_STATUS_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="p-6 sm:p-8 border-t border-slate-100 bg-white flex flex-col-reverse sm:flex-row justify-end gap-3">
                         <button type="button" onClick={() => window.history.back()} className="px-6 py-3 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors">Batal</button>

@@ -6,6 +6,7 @@ interface CustomDatePickerProps {
     value: string;
     onChange: (val: string) => void;
     placeholder?: string;
+    displayFormat?: string;
 }
 
 const MONTHS = [
@@ -15,7 +16,7 @@ const MONTHS = [
 
 const DAYS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 
-export default function CustomDatePicker({ value, onChange, placeholder = "Pilih Tanggal..." }: CustomDatePickerProps) {
+export default function CustomDatePicker({ value, onChange, placeholder = "Pilih Tanggal...", displayFormat }: CustomDatePickerProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [view, setView] = useState<'days' | 'months' | 'years'>('days');
 
@@ -77,7 +78,7 @@ export default function CustomDatePicker({ value, onChange, placeholder = "Pilih
     const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-    const displayValue = value ? dayjs(value).format('DD MMM YYYY') : '';
+    const displayValue = value ? dayjs(value).format(displayFormat || 'DD MMM YYYY') : '';
 
     return (
         <div className="relative w-full" ref={containerRef}>

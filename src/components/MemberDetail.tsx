@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
+import { useAuth } from '../contexts/AuthContext';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
-// 1. Import Toast
 import toast from 'react-hot-toast';
 import {
     ArrowLeft,
@@ -22,10 +22,15 @@ import {
     Hash,
     Tag,
     AlertTriangle,
+    Briefcase
 } from 'lucide-react';
-// import useNotifications from '../hooks/useNotifications/useNotifications'; // Hapus ini
 import { type Member } from '../types/Member';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
+import {
+    isMudaMudiRole,
+    isMudaMudiLevel,
+    type MudaMudiInfo
+} from '../constants/mudaMudiOptions';
 
 dayjs.locale('id');
 
@@ -64,8 +69,11 @@ export default function MemberShow() {
     const navigate = useNavigate();
     // const notifications = useNotifications(); // Hapus ini
 
+    const { profile } = useAuth();
+
     // --- State ---
     const [member, setMember] = useState<Member | null>(null);
+    const [mudaMudiInfo, setMudaMudiInfo] = useState<MudaMudiInfo | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const [openDeleteConfirm, setOpenDeleteConfirm] = useState(false);
@@ -80,14 +88,28 @@ export default function MemberShow() {
             if (!docSnap.exists()) {
                 throw new Error("Data tidak ditemukan");
             }
-            setMember({ uuid: docSnap.id, ...docSnap.data() } as Member);
+            const memberData = { uuid: docSnap.id, ...docSnap.data() } as Member;
+            setMember(memberData);
+
+            if (profile && isMudaMudiRole(profile.status) && isMudaMudiLevel(memberData.level)) {
+                try {
+                    const mmSnap = await getDoc(doc(db, 'sensus', docSnap.id, 'muda_mudi_info', 'detail'));
+                    if (mmSnap.exists()) {
+                        setMudaMudiInfo(mmSnap.data() as MudaMudiInfo);
+                    } else {
+                        setMudaMudiInfo(null);
+                    }
+                } catch (err) {
+                    console.error("Error fetching subcollection muda_mudi_info:", err);
+                }
+            }
         } catch (err: any) {
             // 2. Ganti error fetch
             toast.error(`Gagal memuat data: ${err.message}`);
         } finally {
             setIsLoading(false);
         }
-    }, [id]);
+    }, [id, profile]);
 
     useEffect(() => {
         fetchMember();
@@ -250,6 +272,30 @@ export default function MemberShow() {
                             />
                         </div>
                     </div>
+
+                    {profile && isMudaMudiRole(profile.status) && isMudaMudiLevel(member.level) && (
+                        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-blue-100 shadow-sm bg-gradient-to-br from-white to-blue-50/30">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                                    <Briefcase size={24} />
+                                </div>
+                                <h2 className="text-xl font-bold text-slate-800">Informasi Khusus Muda/i</h2>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <DetailItem
+                                    icon={Briefcase}
+                                    label="Status Pekerjaan / Pelajar"
+                                    value={mudaMudiInfo?.occupation_status || 'Belum diisi'}
+                                />
+                                <DetailItem
+                                    icon={BookOpen}
+                                    label="Status Sambung Ngaji"
+                                    value={mudaMudiInfo?.sambung_ngaji_status || 'Belum diisi'}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Column: Status Cards */}

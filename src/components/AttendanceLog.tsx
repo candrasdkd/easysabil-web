@@ -1,380 +1,1659 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { collection, query, where, getDocs, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import toast from 'react-hot-toast';
 import {
-    ChevronLeft, ChevronRight, Loader2, Download, Share2,
-    X, CheckCircle2, Users, CalendarDays
+    Loader2, Share2,
+    X, Users, CalendarDays, FileSpreadsheet,
+    FileText, Calendar as CalendarIcon, AlertCircle, Search, MessageSquare,
+    Filter, ChevronDown, ChevronUp, Check
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { useMembersStore } from '../store/membersStore';
+import { useRoleMembersStore } from '../store/membersStore';
+import { useAuth } from '../contexts/AuthContext';
+import { logAudit } from '../utils/auditLogger';
+import { getKelompokSlug } from '../constants/mudaMudiOptions';
+import CustomDatePicker from './CustomDatePicker';
 
 dayjs.locale('id');
 
-const CATEGORIES = [
-    { id: 'Bapak-Bapak', label: 'Bapak-Bapak', color: 'blue' },
-    { id: 'Ibu-Ibu', label: 'Ibu-Ibu', color: 'red' },
-    { id: 'Muda/i Laki-laki', label: 'Muda Putra', color: 'blue' },
-    { id: 'Muda/i Perempuan', label: 'Muda Putri', color: 'rose' },
-];
+export interface SessionRecord {
+    status: 'H' | 'I' | 'S' | 'A';
+    note?: string;
+}
 
-export default function MonthlyAttendance() {
-    const [currentDate, setCurrentDate] = useState(dayjs());
-    const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
-    const [isLoading, setIsLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState('Bapak-Bapak');
+export interface AttendanceSession {
+    date: string;
+    kelompok: string;
+    day_label: string;
+    records: Record<string, SessionRecord>;
+    created_at?: any;
+    created_by?: string;
+    updated_at?: any;
+    updated_by?: string;
+}
+
+export default function AttendanceLog() {
+    const { profile } = useAuth();
+    const { members, fetchByRole } = useRoleMembersStore();
+
+    // Mode tab: 'input' | 'rekap'
+    const [mode, setMode] = useState<'input' | 'rekap'>('input');
+    const [searchQuery, setSearchQuery] = useState<string>('');
+    const [showFilters, setShowFilters] = useState<boolean>(false);
+
+    // --- STATE INPUT HARIAN ---
+    const [inputDate, setInputDate] = useState<string>(dayjs().format('YYYY-MM-DD'));
+    const [selectedKelompok, setSelectedKelompok] = useState<string>('');
+    const [selectedGender, setSelectedGender] = useState<string>('SEMUA');
+    const [selectedLevel, setSelectedLevel] = useState<string>('SEMUA');
+    const [availableKelompoks, setAvailableKelompoks] = useState<string[]>([]);
+    const [recordsMap, setRecordsMap] = useState<Record<string, 'H' | 'I' | 'S' | 'A'>>({});
+    const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+    const [isSessionLoading, setIsSessionLoading] = useState<boolean>(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [sessionDocExists, setSessionDocExists] = useState<boolean>(false);
+
+    const noteDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+    // --- STATE REKAP SESSIONS & SUMMARIES ---
+    const [rekapStartDate, setRekapStartDate] = useState<string>(dayjs().startOf('month').format('YYYY-MM-DD'));
+    const [rekapEndDate, setRekapEndDate] = useState<string>(dayjs().endOf('month').format('YYYY-MM-DD'));
+    const [rekapKelompok, setRekapKelompok] = useState<string>('SEMUA');
+    const [rekapGender, setRekapGender] = useState<string>('SEMUA');
+    const [rekapLevel, setRekapLevel] = useState<string>('SEMUA');
+    const [isRekapLoading, setIsRekapLoading] = useState<boolean>(false);
+
+    const [fetchedSessions, setFetchedSessions] = useState<AttendanceSession[]>([]);
+    const [selectedSessionDates, setSelectedSessionDates] = useState<string[]>([]);
+
+    const [overallSummary, setOverallSummary] = useState<{
+        totalMembers: number;
+        totalSessions: number;
+        totalExpected: number;
+        H: number;
+        I: number;
+        S: number;
+        IS: number;
+        A: number;
+        pctHadir: number;
+        pctIzinSakit: number;
+        pctAlfa: number;
+    }>({
+        totalMembers: 0,
+        totalSessions: 0,
+        totalExpected: 0,
+        H: 0,
+        I: 0,
+        S: 0,
+        IS: 0,
+        A: 0,
+        pctHadir: 0,
+        pctIzinSakit: 0,
+        pctAlfa: 0
+    });
+
+    const [levelSummaries, setLevelSummaries] = useState<Array<{
+        level: string;
+        totalMembers: number;
+        totalExpected: number;
+        H: number;
+        I: number;
+        S: number;
+        IS: number;
+        A: number;
+        pctHadir: number;
+        pctIzinSakit: number;
+        pctAlfa: number;
+    }>>([]);
+
+    const [rekapData, setRekapData] = useState<Array<{
+        memberId: string;
+        name: string;
+        alias: string;
+        kelompok: string;
+        level: string;
+        gender: string;
+        order: number;
+        H: number;
+        I: number;
+        S: number;
+        A: number;
+        totalScheduled: number;
+        percentage: number;
+    }>>([]);
+    const [totalScheduledDays, setTotalScheduledDays] = useState<number>(0);
+
+    // Modal Share WA
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-    const [selectedShareGroup, setSelectedShareGroup] = useState<string>('Bapak-Bapak');
 
-    // --- AMBIL DATA MEMBERS DARI STORE (sudah ter-cache) ---
-    const { members, fetchMembers } = useMembersStore();
-    useEffect(() => { fetchMembers(); }, [fetchMembers]);
-
-    const fetchAttendance = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const startOfMonth = currentDate.startOf('month').format('YYYY-MM-DD');
-            const endOfMonth = currentDate.endOf('month').format('YYYY-MM-DD');
-            const q = query(
-                collection(db, 'attendance_logs'),
-                where('date', '>=', startOfMonth),
-                where('date', '<=', endOfMonth)
-            );
-            const querySnapshot = await getDocs(q);
-            const map: Record<string, string> = {};
-            querySnapshot.forEach(d => {
-                const log = d.data();
-                map[`${log.member_id}-${log.date}`] = log.status;
-            });
-            setAttendanceMap(map);
-        } catch (error) {
-            console.error("Error fetching attendance:", error);
-        } finally {
-            setIsLoading(false);
+    // Initial Fetch Members based on logged in user role
+    useEffect(() => {
+        if (profile) {
+            fetchByRole(profile);
         }
-    }, [currentDate]);
+    }, [profile, fetchByRole]);
 
-    useEffect(() => { fetchAttendance(); }, [fetchAttendance]);
+    // Available Level Options for current user status
+    const availableLevelOptions = useMemo(() => {
+        if (profile?.status === 4 || profile?.status === 5) {
+            return ['Pra Remaja', 'Remaja', 'Pra Nikah'];
+        }
+        return ['Cabe Rawit', 'Pra Remaja', 'Remaja', 'Pra Nikah', 'Dewasa', 'Lansia'];
+    }, [profile]);
 
-    // --- LOGIC ---
-    const scheduleDays = useMemo(() => {
-        const daysInMonth = currentDate.daysInMonth();
-        const days = [];
-        for (let i = 1; i <= daysInMonth; i++) {
-            const date = currentDate.date(i);
-            const dayOfWeek = date.day();
-            if (dayOfWeek === 1 || dayOfWeek === 4) {
-                days.push({
-                    date: i,
-                    dayName: date.format('dddd'),
-                    shortDay: date.format('dd'),
-                    fullDate: date.format('YYYY-MM-DD')
-                });
+    // Active Filter Count calculation
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (mode === 'input') {
+            if (selectedGender !== 'SEMUA') count++;
+            if (selectedLevel !== 'SEMUA') count++;
+            if (selectedKelompok && !(profile && (profile.status === 3 || profile.status === 5))) count++;
+        } else {
+            if (rekapGender !== 'SEMUA') count++;
+            if (rekapLevel !== 'SEMUA') count++;
+            if (rekapKelompok !== 'SEMUA' && !(profile && (profile.status === 3 || profile.status === 5))) count++;
+        }
+        return count;
+    }, [mode, selectedGender, selectedLevel, selectedKelompok, rekapGender, rekapLevel, rekapKelompok, profile]);
+
+    // Populate Available Kelompoks from members data
+    useEffect(() => {
+        if (members && members.length > 0) {
+            const list = Array.from(new Set(members.map(m => m.kelompok).filter(Boolean))).sort();
+            setAvailableKelompoks(list);
+
+            if (profile) {
+                if ((profile.status === 3 || profile.status === 5) && profile.kelompok) {
+                    setSelectedKelompok(profile.kelompok);
+                    setRekapKelompok(profile.kelompok);
+                } else if (!selectedKelompok && list.length > 0) {
+                    setSelectedKelompok(list[0]);
+                }
             }
         }
-        return days;
-    }, [currentDate]);
+    }, [members, profile]);
 
-    const groupedMembers = useMemo(() => {
-        const checkLevel = (l: string, t: string[]) => l && t.some(x => x.toLowerCase() === l.toLowerCase());
-        return {
-            'Bapak-Bapak': members.filter(m => checkLevel(m.level, ['Dewasa', 'Lansia']) && m.gender === 'Laki - Laki'),
-            'Ibu-Ibu': members.filter(m => checkLevel(m.level, ['Dewasa', 'Lansia']) && m.gender === 'Perempuan'),
-            'Muda/i Laki-laki': members.filter(m => checkLevel(m.level, ['Pra Remaja', 'Remaja', 'Pra Nikah']) && m.gender === 'Laki - Laki'),
-            'Muda/i Perempuan': members.filter(m => checkLevel(m.level, ['Pra Remaja', 'Remaja', 'Pra Nikah']) && m.gender === 'Perempuan'),
-        };
-    }, [members]);
+    // --- REALTIME AUTO SAVE FUNCTION ---
+    const autoSaveSession = useCallback(async (
+        targetRecords: Record<string, 'H' | 'I' | 'S' | 'A'>,
+        targetNotes: Record<string, string>
+    ) => {
+        if (!selectedKelompok || !inputDate || !profile) return;
+        setSaveStatus('saving');
 
-    const handleToggle = async (memberId: string, dateStr: string) => {
-        const key = `${memberId}-${dateStr}`;
-        const current = attendanceMap[key];
-        let next: 'H' | 'I' | 'S' | 'A' | null = null;
-        if (!current) next = 'H';
-        else if (current === 'H') next = 'I';
-        else if (current === 'I') next = 'S';
-        else if (current === 'S') next = 'A';
+        try {
+            const docId = `${inputDate}__${getKelompokSlug(selectedKelompok)}`;
+            const sessionRef = doc(db, 'attendance_sessions', docId);
+            const dayLabel = dayjs(inputDate).format('dddd');
 
-        setAttendanceMap(prev => {
-            const n = { ...prev };
-            if (next) n[key] = next; else delete n[key];
-            return n;
+            const records: Record<string, SessionRecord> = {};
+            Object.entries(targetRecords).forEach(([mId, status]) => {
+                if (status) {
+                    const rec: SessionRecord = { status };
+                    if (targetNotes[mId] && targetNotes[mId].trim()) {
+                        rec.note = targetNotes[mId].trim();
+                    }
+                    records[mId] = rec;
+                }
+            });
+
+            const sessionPayload: any = {
+                date: inputDate,
+                kelompok: selectedKelompok,
+                day_label: dayLabel,
+                records: records,
+                updated_at: serverTimestamp(),
+                updated_by: profile.uid,
+            };
+
+            if (!sessionDocExists) {
+                sessionPayload.created_at = serverTimestamp();
+                sessionPayload.created_by = profile.uid;
+            }
+
+            await setDoc(sessionRef, sessionPayload, { merge: true });
+
+            if (!sessionDocExists) {
+                await logAudit(
+                    'CREATE',
+                    'ATTENDANCE',
+                    docId,
+                    `Absensi ${selectedKelompok} - ${inputDate}`,
+                    profile,
+                    { date: inputDate, kelompok: selectedKelompok, total_records: Object.keys(records).length },
+                    `Membuat sesi absensi baru tanggal ${inputDate} untuk ${selectedKelompok}`
+                );
+            }
+
+            setSessionDocExists(true);
+            setSaveStatus('saved');
+        } catch (err) {
+            console.error("Auto save error:", err);
+            setSaveStatus('error');
+        }
+    }, [selectedKelompok, inputDate, profile, sessionDocExists]);
+
+    // --- 1. FETCH DAILY SESSION FOR INPUT MODE ---
+    const fetchSession = useCallback(async () => {
+        if (!inputDate || !selectedKelompok) return;
+        setIsSessionLoading(true);
+        setSaveStatus('idle');
+
+        try {
+            const docId = `${inputDate}__${getKelompokSlug(selectedKelompok)}`;
+            const sessionRef = doc(db, 'attendance_sessions', docId);
+            const snap = await getDoc(sessionRef);
+
+            if (snap.exists()) {
+                setSessionDocExists(true);
+                const data = snap.data() as AttendanceSession;
+                const rMap: Record<string, 'H' | 'I' | 'S' | 'A'> = {};
+                const nMap: Record<string, string> = {};
+                if (data.records) {
+                    Object.entries(data.records).forEach(([mId, rec]) => {
+                        if (rec && rec.status) {
+                            rMap[mId] = rec.status;
+                            if (rec.note) nMap[mId] = rec.note;
+                        }
+                    });
+                }
+                setRecordsMap(rMap);
+                setNotesMap(nMap);
+                setSaveStatus('saved');
+            } else {
+                setSessionDocExists(false);
+                setRecordsMap({});
+                setNotesMap({});
+                setSaveStatus('idle');
+            }
+        } catch (err) {
+            console.error("Error fetching attendance session:", err);
+            toast.error("Gagal memuat data absensi sesi");
+        } finally {
+            setIsSessionLoading(false);
+        }
+    }, [inputDate, selectedKelompok]);
+
+    useEffect(() => {
+        if (mode === 'input') {
+            fetchSession();
+        }
+    }, [fetchSession, mode]);
+
+    // Filter members for Input Tab
+    const filteredInputMembers = useMemo(() => {
+        const MUDA_LEVELS = ['pra remaja', 'remaja', 'pra nikah'];
+
+        return members.filter(m => {
+            if (m.is_active === false) return false;
+
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase().trim();
+                const matchName = m.name.toLowerCase().includes(q);
+                const matchAlias = m.alias ? m.alias.toLowerCase().includes(q) : false;
+                if (!matchName && !matchAlias) return false;
+            }
+
+            if (profile && (profile.status === 3 || profile.status === 5) && profile.kelompok) {
+                if (m.kelompok !== profile.kelompok) return false;
+            } else if (selectedKelompok && m.kelompok !== selectedKelompok) {
+                return false;
+            }
+
+            const l = (m.level || '').toLowerCase().trim();
+
+            if (profile && (profile.status === 4 || profile.status === 5)) {
+                if (!MUDA_LEVELS.includes(l)) return false;
+            }
+
+            if (selectedGender !== 'SEMUA') {
+                if (m.gender !== selectedGender) return false;
+            }
+
+            if (selectedLevel !== 'SEMUA') {
+                if (l !== selectedLevel.toLowerCase().trim()) return false;
+            }
+
+            return true;
+        }).sort((a, b) => (a.order || 99) - (b.order || 99));
+    }, [members, selectedKelompok, selectedGender, selectedLevel, profile, searchQuery]);
+
+    // Instant Toggle Status with Automatic Saving
+    const handleToggleMemberStatus = (memberId: string, targetStatus?: 'H' | 'I' | 'S' | 'A') => {
+        setRecordsMap(prev => {
+            const next = { ...prev };
+            const current = next[memberId];
+            let newStatus: 'H' | 'I' | 'S' | 'A' | undefined = undefined;
+
+            if (targetStatus) {
+                if (current === targetStatus) {
+                    delete next[memberId];
+                } else {
+                    next[memberId] = targetStatus;
+                    newStatus = targetStatus;
+                }
+            } else {
+                if (!current) newStatus = 'H';
+                else if (current === 'H') newStatus = 'I';
+                else if (current === 'I') newStatus = 'S';
+                else if (current === 'S') newStatus = 'A';
+
+                if (newStatus) {
+                    next[memberId] = newStatus;
+                } else {
+                    delete next[memberId];
+                }
+            }
+
+            let nextNotes = notesMap;
+            if (newStatus !== 'I' && newStatus !== 'S') {
+                if (notesMap[memberId]) {
+                    nextNotes = { ...notesMap };
+                    delete nextNotes[memberId];
+                    setNotesMap(nextNotes);
+                }
+            }
+
+            autoSaveSession(next, nextNotes);
+            return next;
+        });
+    };
+
+    // Note Change Handler with Debounced Auto Saving
+    const handleNoteChange = (memberId: string, text: string) => {
+        const nextNotes = { ...notesMap, [memberId]: text };
+        setNotesMap(nextNotes);
+
+        if (noteDebounceTimer.current) {
+            clearTimeout(noteDebounceTimer.current);
+        }
+        noteDebounceTimer.current = setTimeout(() => {
+            autoSaveSession(recordsMap, nextNotes);
+        }, 400);
+    };
+
+    // --- 2. REKAP ABSENSI AGGREGATOR ---
+    const fetchRekapData = useCallback(async () => {
+        if (!rekapStartDate || !rekapEndDate) return;
+        setIsRekapLoading(true);
+
+        try {
+            const start = dayjs(rekapStartDate);
+            const end = dayjs(rekapEndDate);
+            if (end.isBefore(start)) {
+                toast.error("Tanggal akhir harus setelah tanggal mulai");
+                setIsRekapLoading(false);
+                return;
+            }
+
+            let q = query(
+                collection(db, 'attendance_sessions'),
+                where('date', '>=', rekapStartDate),
+                where('date', '<=', rekapEndDate)
+            );
+
+            if (rekapKelompok !== 'SEMUA') {
+                q = query(
+                    collection(db, 'attendance_sessions'),
+                    where('date', '>=', rekapStartDate),
+                    where('date', '<=', rekapEndDate),
+                    where('kelompok', '==', rekapKelompok)
+                );
+            }
+
+            const querySnap = await getDocs(q);
+            const sessionDocs: AttendanceSession[] = [];
+            querySnap.forEach(d => {
+                sessionDocs.push(d.data() as AttendanceSession);
+            });
+
+            sessionDocs.sort((a, b) => a.date.localeCompare(b.date));
+            setFetchedSessions(sessionDocs);
+
+            const allDates = sessionDocs.map(s => s.date);
+            setSelectedSessionDates(allDates);
+        } catch (err) {
+            console.error("Error fetching sessions for rekap:", err);
+            toast.error("Gagal memuat data sesi pengajian");
+        } finally {
+            setIsRekapLoading(false);
+        }
+    }, [rekapStartDate, rekapEndDate, rekapKelompok]);
+
+    useEffect(() => {
+        if (mode === 'rekap') {
+            fetchRekapData();
+        }
+    }, [fetchRekapData, mode]);
+
+    // Recalculate Rekap Summaries (3 Categories: Hadir, Izin&Sakit, Alfa)
+    useEffect(() => {
+        if (mode !== 'rekap') return;
+
+        const activeSessions = fetchedSessions.filter(s => selectedSessionDates.includes(s.date));
+        const totalSessionsCount = activeSessions.length;
+        setTotalScheduledDays(totalSessionsCount);
+
+        const MUDA_LEVELS = ['pra remaja', 'remaja', 'pra nikah'];
+        const targetMembers = members.filter(m => {
+            if (m.is_active === false) return false;
+
+            if (profile && (profile.status === 3 || profile.status === 5) && profile.kelompok) {
+                if (m.kelompok !== profile.kelompok) return false;
+            } else if (rekapKelompok !== 'SEMUA' && m.kelompok !== rekapKelompok) {
+                return false;
+            }
+
+            const l = (m.level || '').toLowerCase().trim();
+            if (profile && (profile.status === 4 || profile.status === 5)) {
+                if (!MUDA_LEVELS.includes(l)) return false;
+            }
+
+            if (rekapGender !== 'SEMUA' && m.gender !== rekapGender) return false;
+            if (rekapLevel !== 'SEMUA' && l !== rekapLevel.toLowerCase().trim()) return false;
+
+            return true;
         });
 
-        try {
-            const docRef = doc(db, 'attendance_logs', `${memberId}_${dateStr}`);
-            if (next) {
-                await setDoc(docRef, { member_id: memberId, date: dateStr, status: next }, { merge: true });
-            } else {
-                await deleteDoc(docRef);
+        let overallH = 0, overallI = 0, overallS = 0, overallA = 0;
+        const levelsMap: Record<string, { totalMembers: number; H: number; I: number; S: number; A: number }> = {};
+
+        const summaryList = targetMembers.map(m => {
+            let hCount = 0, iCount = 0, sCount = 0, aCount = 0;
+
+            activeSessions.forEach(sDoc => {
+                const rec = sDoc.records ? sDoc.records[m.uuid] : undefined;
+                if (rec && rec.status) {
+                    if (rec.status === 'H') hCount++;
+                    else if (rec.status === 'I') iCount++;
+                    else if (rec.status === 'S') sCount++;
+                    else if (rec.status === 'A') aCount++;
+                } else {
+                    aCount++;
+                }
+            });
+
+            overallH += hCount;
+            overallI += iCount;
+            overallS += sCount;
+            overallA += aCount;
+
+            const mLevel = m.level || 'Lainnya';
+            if (!levelsMap[mLevel]) {
+                levelsMap[mLevel] = { totalMembers: 0, H: 0, I: 0, S: 0, A: 0 };
             }
-        } catch (error) {
-            console.error("Error updating attendance log:", error);
+            levelsMap[mLevel].totalMembers += 1;
+            levelsMap[mLevel].H += hCount;
+            levelsMap[mLevel].I += iCount;
+            levelsMap[mLevel].S += sCount;
+            levelsMap[mLevel].A += aCount;
+
+            const pct = totalSessionsCount > 0 ? Math.round((hCount / totalSessionsCount) * 100) : 0;
+
+            return {
+                memberId: m.uuid,
+                name: m.name,
+                alias: m.alias,
+                kelompok: m.kelompok,
+                level: m.level,
+                gender: m.gender,
+                order: m.order || 99,
+                H: hCount,
+                I: iCount,
+                S: sCount,
+                A: aCount,
+                totalScheduled: totalSessionsCount,
+                percentage: pct
+            };
+        }).sort((a, b) => a.order - b.order);
+
+        const totalPossibleOverall = targetMembers.length * totalSessionsCount;
+        const pctHadirOverall = totalPossibleOverall > 0 ? Math.round((overallH / totalPossibleOverall) * 100) : 0;
+        const pctIzinSakitOverall = totalPossibleOverall > 0 ? Math.round(((overallI + overallS) / totalPossibleOverall) * 100) : 0;
+        const pctAlfaOverall = totalPossibleOverall > 0 ? Math.max(0, 100 - pctHadirOverall - pctIzinSakitOverall) : 0;
+
+        setOverallSummary({
+            totalMembers: targetMembers.length,
+            totalSessions: totalSessionsCount,
+            totalExpected: totalPossibleOverall,
+            H: overallH,
+            I: overallI,
+            S: overallS,
+            IS: overallI + overallS,
+            A: overallA,
+            pctHadir: pctHadirOverall,
+            pctIzinSakit: pctIzinSakitOverall,
+            pctAlfa: pctAlfaOverall
+        });
+
+        const levelList = Object.entries(levelsMap).map(([lvlName, stat]) => {
+            const totalPossibleLvl = stat.totalMembers * totalSessionsCount;
+            const pctH = totalPossibleLvl > 0 ? Math.round((stat.H / totalPossibleLvl) * 100) : 0;
+            const pctIS = totalPossibleLvl > 0 ? Math.round(((stat.I + stat.S) / totalPossibleLvl) * 100) : 0;
+            const pctA = totalPossibleLvl > 0 ? Math.max(0, 100 - pctH - pctIS) : 0;
+
+            return {
+                level: lvlName,
+                totalMembers: stat.totalMembers,
+                totalExpected: totalPossibleLvl,
+                H: stat.H,
+                I: stat.I,
+                S: stat.S,
+                IS: stat.I + stat.S,
+                A: stat.A,
+                pctHadir: pctH,
+                pctIzinSakit: pctIS,
+                pctAlfa: pctA
+            };
+        }).sort((a, b) => b.pctHadir - a.pctHadir);
+
+        setLevelSummaries(levelList);
+        setRekapData(summaryList);
+    }, [mode, selectedSessionDates, fetchedSessions, members, rekapKelompok, rekapGender, rekapLevel, profile]);
+
+    // Session Date Toggle
+    const toggleSessionDate = (date: string) => {
+        setSelectedSessionDates(prev =>
+            prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]
+        );
+    };
+
+    const handleToggleAllSessions = () => {
+        if (selectedSessionDates.length === fetchedSessions.length) {
+            setSelectedSessionDates([]);
+        } else {
+            setSelectedSessionDates(fetchedSessions.map(s => s.date));
         }
     };
 
-    // --- ACTIONS ---
+    // Filter Rekap Data by Search Query
+    const filteredRekapData = useMemo(() => {
+        if (!searchQuery.trim()) return rekapData;
+        const q = searchQuery.toLowerCase().trim();
+        return rekapData.filter(r =>
+            r.name.toLowerCase().includes(q) || (r.alias && r.alias.toLowerCase().includes(q))
+        );
+    }, [rekapData, searchQuery]);
+
+    // --- EXPORT FUNCTIONALITIES ---
     const handleExportExcel = () => {
-        // @ts-ignore
-        const currentMembers = groupedMembers[activeTab] || [];
-        const rows = [[`REKAP ${activeTab} - ${currentDate.format('MMM YYYY')}`], [''], ['No', 'Nama', ...scheduleDays.map(d => `${d.shortDay}, ${d.date}`), 'H', 'I', 'S', 'A']];
-        currentMembers.forEach((m: any, i: number) => {
-            let h = 0, i_ = 0, s = 0, a = 0;
-            const stats = scheduleDays.map(d => {
-                const st = attendanceMap[`${m.uuid}-${d.fullDate}`];
-                if (st === 'H') h++; if (st === 'I') i_++; if (st === 'S') s++; if (st === 'A') a++;
-                return st || '';
+        if (mode === 'input') {
+            const rows = [
+                [`ABSENSI SESI ${selectedKelompok} - ${inputDate}`],
+                [`Hari: ${dayjs(inputDate).format('dddd, DD MMMM YYYY')}`],
+                [''],
+                ['No', 'Nama Lengkap', 'Alias', 'Level', 'Kelompok', 'Status Absensi', 'Catatan / Alasan']
+            ];
+
+            filteredInputMembers.forEach((m, idx) => {
+                const status = recordsMap[m.uuid] || 'Belum Diisi';
+                const note = notesMap[m.uuid] || '-';
+                rows.push([
+                    String(idx + 1),
+                    m.name,
+                    m.alias || '-',
+                    m.level || '-',
+                    m.kelompok || '-',
+                    status,
+                    note
+                ]);
             });
-            rows.push([i + 1, m.name, ...stats, h, i_, s, a]);
-        });
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Absensi');
-        saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Absensi_${activeTab}.xlsx`);
-        toast.success('Excel Unduh');
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Absensi Sesi');
+            saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Absensi_Sesi_${selectedKelompok}_${inputDate}.xlsx`);
+            toast.success("Excel Sesi berhasil diunduh");
+        } else {
+            const rows = [
+                [`REKAP KEHADIRAN ${rekapKelompok === 'SEMUA' ? 'SEMUA KELOMPOK' : rekapKelompok}`],
+                [`Periode: ${dayjs(rekapStartDate).format('DD MMM YYYY')} s/d ${dayjs(rekapEndDate).format('DD MMM YYYY')}`],
+                [`Total Sesi Dihitung: ${selectedSessionDates.length} Sesi (${selectedSessionDates.join(', ')})`],
+                [''],
+                ['--- RINGKASAN KEHADIRAN PER JENJANG ---'],
+                ['Level / Jenjang', 'Total Anggota', '% Hadir', '% Izin & Sakit', '% Alfa', 'Total Hadir (H)', 'Total Izin & Sakit (I+S)', 'Total Alfa (A)'],
+                [
+                    'Gabungan Semua Level',
+                    String(overallSummary.totalMembers),
+                    `${overallSummary.pctHadir}%`,
+                    `${overallSummary.pctIzinSakit}%`,
+                    `${overallSummary.pctAlfa}%`,
+                    String(overallSummary.H),
+                    String(overallSummary.IS),
+                    String(overallSummary.A)
+                ],
+                ...levelSummaries.map(l => [
+                    l.level,
+                    String(l.totalMembers),
+                    `${l.pctHadir}%`,
+                    `${l.pctIzinSakit}%`,
+                    `${l.pctAlfa}%`,
+                    String(l.H),
+                    String(l.IS),
+                    String(l.A)
+                ]),
+                [''],
+                ['--- DETAIL PERSENTASE TIAP ANGGOTA ---'],
+                ['No', 'Nama Lengkap', 'Alias', 'Kelompok', 'Jenjang', 'Hadir (H)', 'Izin (I)', 'Sakit (S)', 'Alfa (A)', 'Total Sesi', '% Kehadiran']
+            ];
+
+            filteredRekapData.forEach((row, idx) => {
+                rows.push([
+                    String(idx + 1),
+                    row.name,
+                    row.alias || '-',
+                    row.kelompok,
+                    row.level,
+                    String(row.H),
+                    String(row.I),
+                    String(row.S),
+                    String(row.A),
+                    String(row.totalScheduled),
+                    `${row.percentage}%`
+                ]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Rekap Absensi');
+            saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Rekap_Absensi_${rekapKelompok}_${rekapStartDate}_${rekapEndDate}.xlsx`);
+            toast.success("Excel Rekap berhasil diunduh");
+        }
     };
 
     const executeShareWA = () => {
-        // @ts-ignore
-        const target = groupedMembers[selectedShareGroup] || [];
-        let msg = `*ABSENSI PENGAJIAN*\n📂 ${selectedShareGroup}\n🗓 ${currentDate.format('MMM YYYY')}\n---\n`;
-        const emo = (s: string) => ({ 'H': '✅', 'I': 'ℹ️', 'S': '🤒', 'A': '❌' }[s] || '➖');
-        target.forEach((m: any, i: number) => {
-            msg += `${i + 1}. ${m.alias || m.name} : ${scheduleDays.map(d => emo(attendanceMap[`${m.uuid}-${d.fullDate}`] || '')).join('')}\n`;
+        let msg = `*REKAP KEHADIRAN PENGAJIAN*\n`;
+        msg += `🗓 Periode: ${dayjs(rekapStartDate).format('DD MMM')} - ${dayjs(rekapEndDate).format('DD MMM YYYY')}\n`;
+        msg += `📌 Kelompok: ${rekapKelompok === 'SEMUA' ? 'Semua Kelompok' : rekapKelompok}\n`;
+        msg += `⏱ Total Sesi Pengajian: ${selectedSessionDates.length} Sesi\n\n`;
+
+        msg += `📊 *RINGKASAN GABUNGAN SEMUA JENJANG:*\n`;
+        msg += `• Hadir: *${overallSummary.pctHadir}%* (${overallSummary.H} presensi)\n`;
+        msg += `• Izin & Sakit: *${overallSummary.pctIzinSakit}%* (${overallSummary.IS} presensi - I:${overallSummary.I}, S:${overallSummary.S})\n`;
+        msg += `• Alfa: *${overallSummary.pctAlfa}%* (${overallSummary.A} presensi)\n\n`;
+
+        msg += `📌 *PERSENTASE KEHADIRAN PER JENJANG:*\n`;
+        levelSummaries.forEach(lvl => {
+            msg += `• *${lvl.level}*: Hadir ${lvl.pctHadir}% | Izin&Sakit ${lvl.pctIzinSakit}% | Alfa ${lvl.pctAlfa}%\n`;
         });
+
+        msg += `\n👥 *PERSENTASE KEHADIRAN TIAP ANGGOTA:*\n`;
+        filteredRekapData.forEach((item, idx) => {
+            msg += `${idx + 1}. *${item.alias || item.name}* (${item.level}) : H:${item.H} | I:${item.I} | S:${item.S} | A:${item.A} (${item.percentage}%)\n`;
+        });
+
         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
         setIsShareModalOpen(false);
     };
 
-    // @ts-ignore
-    const currentMembers = groupedMembers[activeTab] || [];
-    // @ts-ignore
-    const currentConfig = CATEGORIES.find(c => c.id === activeTab);
+    const handlePrintPDF = () => {
+        window.print();
+    };
 
     return (
-        // Padding bottom besar di mobile untuk tombol floating, padding standard di desktop
-        <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-32 md:pb-12">
-
-            {/* ================= HEADER AREA ================= */}
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-24 md:pb-12">
+            {/* Header Sticky Navigation */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-
-                {/* --- HEADER DESKTOP (Tampilan Web Lama) --- */}
-                <div className="hidden md:flex max-w-[100vw] mx-auto px-6 py-4 justify-between items-center">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900">PENGAJIAN KELOMPOK 1</h1>
-                        <p className="text-slate-500 text-sm">Rekap Absensi Senin & Kamis</p>
+                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+                            <CalendarDays className="text-blue-600" size={24} />
+                            Presensi & Rekap Kehadiran
+                        </h1>
+                        <p className="text-slate-500 text-xs sm:text-sm">
+                            Manajemen absensi sesi harian dan rekap pencapaian kehadiran jamaah.
+                        </p>
                     </div>
-                    <div className="flex items-center gap-4 bg-slate-100 p-1 rounded-xl">
-                        <button onClick={() => setCurrentDate(currentDate.subtract(1, 'month'))} className="p-2 hover:bg-white rounded-lg shadow-sm"><ChevronLeft size={20} /></button>
-                        <div className="w-40 text-center font-bold text-slate-700 uppercase">{currentDate.format('MMMM YYYY')}</div>
-                        <button onClick={() => setCurrentDate(currentDate.add(1, 'month'))} className="p-2 hover:bg-white rounded-lg shadow-sm"><ChevronRight size={20} /></button>
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg hover:bg-emerald-100 font-semibold text-sm">
-                            <Download size={18} /> Excel
-                        </button>
-                        <button onClick={() => { setSelectedShareGroup(activeTab); setIsShareModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm shadow-md">
-                            <Share2 size={18} /> Share WA
-                        </button>
-                    </div>
-                </div>
 
-                {/* --- HEADER MOBILE (Tampilan Mobile Baru Compact) --- */}
-                <div className="flex md:hidden px-4 py-3 flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className={`p-2 rounded-lg bg-${currentConfig?.color}-100 text-${currentConfig?.color}-700`}>
-                                <CalendarDays size={20} />
-                            </div>
-                            <div>
-                                <h1 className="text-lg font-bold leading-none">Jurnal</h1>
-                                <p className="text-xs text-slate-500 font-medium">{currentDate.format('MMMM YYYY')}</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center bg-slate-100 rounded-full p-1">
-                            <button onClick={() => setCurrentDate(currentDate.subtract(1, 'month'))} className="p-2 bg-white rounded-full shadow-sm"><ChevronLeft size={16} /></button>
-                            <button onClick={() => setCurrentDate(currentDate.add(1, 'month'))} className="p-2 bg-white rounded-full shadow-sm ml-1"><ChevronRight size={16} /></button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* --- TABS KATEGORI (Shared) --- */}
-                {/* Mobile: Negative margin biar full width. Desktop: Normal container */}
-                <div className="md:px-6 px-4 pb-3 md:pb-4 border-t md:border-none pt-2 md:pt-0">
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar md:flex-wrap">
-                        {CATEGORIES.map((cat) => (
-                            <button
-                                key={cat.id}
-                                onClick={() => setActiveTab(cat.id)}
-                                className={`
-                                    flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap text-sm font-bold transition-all border flex-shrink-0
-                                    ${activeTab === cat.id
-                                        ? `bg-${cat.color}-600 text-white border-${cat.color}-600 shadow-md`
-                                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}
-                                `}
-                            >
-                                {activeTab === cat.id ? <CheckCircle2 size={16} /> : <Users size={16} />}
-                                {cat.label}
-                            </button>
-                        ))}
+                    {/* Mode Switcher */}
+                    <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-start md:self-auto w-full sm:w-auto">
+                        <button
+                            onClick={() => setMode('input')}
+                            className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
+                                mode === 'input'
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <CalendarIcon size={16} /> Input Sesi
+                        </button>
+                        <button
+                            onClick={() => setMode('rekap')}
+                            className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
+                                mode === 'rekap'
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <FileText size={16} /> Rekap Presensi
+                        </button>
                     </div>
                 </div>
             </div>
 
-            {/* ================= CONTENT BODY ================= */}
-            <div className="w-full md:px-6 mt-4">
-                {isLoading ? (
-                    <div className="flex justify-center py-20"><Loader2 className="animate-spin text-slate-400" /></div>
+            {/* MAIN CONTENT AREA */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+
+                {mode === 'input' ? (
+                    /* ================= TAB 1: INPUT ABSENSI SESI ================= */
+                    <div className="space-y-6">
+                        {/* Control Bar Input */}
+                        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+                            {/* Always Visible Top Bar (Tanggal Sesi + Toggle Filter Button) */}
+                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                                <div className="flex-1 max-w-xs sm:max-w-sm">
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                        Tanggal Sesi
+                                    </label>
+                                    <CustomDatePicker
+                                        value={inputDate}
+                                        onChange={(val) => setInputDate(val)}
+                                        displayFormat="dddd, DD MMMM YYYY"
+                                    />
+                                </div>
+
+                                <div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all ${
+                                            showFilters
+                                                ? 'bg-slate-100 text-slate-800 border-slate-300'
+                                                : activeFilterCount > 0
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Filter size={16} />
+                                        {showFilters ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
+                                        {activeFilterCount > 0 && !showFilters && (
+                                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                                {activeFilterCount}
+                                            </span>
+                                        )}
+                                        {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Collapsible Filter Section */}
+                            {showFilters && (
+                                <div className="pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in">
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Kelompok
+                                        </label>
+                                        {profile && (profile.status === 3 || profile.status === 5) ? (
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={profile.kelompok}
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-700 font-semibold outline-none text-sm"
+                                            />
+                                        ) : (
+                                            <select
+                                                value={selectedKelompok}
+                                                onChange={(e) => setSelectedKelompok(e.target.value)}
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+                                            >
+                                                <option value="">-- Pilih Kelompok --</option>
+                                                {availableKelompoks.map(k => (
+                                                    <option key={k} value={k}>{k}</option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Jenis Kelamin
+                                        </label>
+                                        <select
+                                            value={selectedGender}
+                                            onChange={(e) => setSelectedGender(e.target.value)}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+                                        >
+                                            <option value="SEMUA">Semua Jenis Kelamin</option>
+                                            <option value="Laki - Laki">Laki - Laki</option>
+                                            <option value="Perempuan">Perempuan</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Jenjang / Level
+                                        </label>
+                                        <select
+                                            value={selectedLevel}
+                                            onChange={(e) => setSelectedLevel(e.target.value)}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+                                        >
+                                            <option value="SEMUA">
+                                                {profile?.status === 4 || profile?.status === 5 ? 'Semua Level Muda/i' : 'Semua Level'}
+                                            </option>
+                                            {availableLevelOptions.map(lvl => (
+                                                <option key={lvl} value={lvl}>{lvl}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Search & Counter Bar */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                            {/* SEARCH BAR */}
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Cari nama jamaah atau alias..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-10 py-2.5 bg-white rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Realtime Save Status Indicator */}
+                            <div className="flex items-center justify-between sm:justify-end gap-3 text-xs text-slate-500 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-2">
+                                    <span className={`w-2.5 h-2.5 rounded-full ${
+                                        saveStatus === 'saving'
+                                            ? 'bg-blue-500 animate-pulse'
+                                            : saveStatus === 'saved'
+                                            ? 'bg-emerald-500'
+                                            : saveStatus === 'error'
+                                            ? 'bg-rose-500'
+                                            : 'bg-emerald-500'
+                                    }`} />
+                                    <span className="font-semibold text-slate-700 truncate max-w-[200px] sm:max-w-none">
+                                        {saveStatus === 'saving' ? (
+                                            <span className="text-blue-600 font-bold flex items-center gap-1">
+                                                <Loader2 size={12} className="animate-spin inline" /> Menyimpan Otomatis...
+                                            </span>
+                                        ) : saveStatus === 'saved' ? (
+                                            <span className="text-emerald-700 font-bold flex items-center gap-1">
+                                                <Check size={14} className="inline text-emerald-600" /> Tersimpan Otomatis
+                                            </span>
+                                        ) : saveStatus === 'error' ? (
+                                            <span className="text-rose-600 font-bold">Gagal Menyimpan</span>
+                                        ) : (
+                                            <span>{sessionDocExists ? 'Tersimpan Otomatis' : 'Sesi Baru'}</span>
+                                        )}
+                                    </span>
+                                </div>
+                                <span className="font-bold text-slate-800">{filteredInputMembers.length} Jamaah</span>
+                            </div>
+                        </div>
+
+                        {/* Presensi List / Table Container */}
+                        {isSessionLoading ? (
+                            <div className="bg-white rounded-2xl p-16 flex flex-col items-center justify-center text-slate-400 border border-slate-200 shadow-sm">
+                                <Loader2 className="animate-spin mb-2" size={32} />
+                                <p className="text-sm font-medium">Memuat data absensi sesi...</p>
+                            </div>
+                        ) : filteredInputMembers.length === 0 ? (
+                            <div className="bg-white rounded-2xl p-12 text-center text-slate-500 border border-slate-200 shadow-sm">
+                                <Users size={40} className="mx-auto mb-3 text-slate-300" />
+                                <p className="font-bold text-slate-700">Tidak ada data anggota</p>
+                                <p className="text-xs text-slate-400 mt-1">Coba ubah kata kunci pencarian atau kriteria filter.</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* MOBILE LIST VIEW (< md) */}
+                                <div className="md:hidden space-y-3">
+                                    {filteredInputMembers.map((m, idx) => {
+                                        const status = recordsMap[m.uuid];
+                                        const note = notesMap[m.uuid] || '';
+                                        const showNoteInput = status === 'I' || status === 'S';
+
+                                        return (
+                                            <div
+                                                key={m.uuid}
+                                                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3"
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="w-7 h-7 rounded-xl bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
+                                                            {m.order || idx + 1}
+                                                        </span>
+                                                        <div>
+                                                            <h4 className="font-bold text-slate-900 text-base leading-snug">{m.name}</h4>
+                                                            {m.alias && <p className="text-xs text-slate-400">Alias: {m.alias}</p>}
+                                                        </div>
+                                                    </div>
+                                                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 flex-shrink-0">
+                                                        {m.level}
+                                                    </span>
+                                                </div>
+
+                                                {/* Mobile Touch-Friendly Status Buttons */}
+                                                <div className="grid grid-cols-4 gap-2 pt-1 border-t border-slate-100">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'H')}
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
+                                                            status === 'H'
+                                                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 ring-2 ring-emerald-600 scale-[1.02]'
+                                                                : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-emerald-100'
+                                                        }`}
+                                                    >
+                                                        <span className="text-sm">H</span>
+                                                        <span className="text-[10px] font-medium opacity-80">Hadir</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'I')}
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
+                                                            status === 'I'
+                                                                ? 'bg-amber-500 text-white shadow-md shadow-amber-200 ring-2 ring-amber-500 scale-[1.02]'
+                                                                : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-amber-100'
+                                                        }`}
+                                                    >
+                                                        <span className="text-sm">I</span>
+                                                        <span className="text-[10px] font-medium opacity-80">Izin</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'S')}
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
+                                                            status === 'S'
+                                                                ? 'bg-blue-500 text-white shadow-md shadow-blue-200 ring-2 ring-blue-500 scale-[1.02]'
+                                                                : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-blue-100'
+                                                        }`}
+                                                    >
+                                                        <span className="text-sm">S</span>
+                                                        <span className="text-[10px] font-medium opacity-80">Sakit</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'A')}
+                                                        className={`py-2.5 rounded-xl font-bold text-xs flex flex-col items-center justify-center transition-all ${
+                                                            status === 'A'
+                                                                ? 'bg-rose-600 text-white shadow-md shadow-rose-200 ring-2 ring-rose-600 scale-[1.02]'
+                                                                : 'bg-slate-50 text-slate-700 border border-slate-200 active:bg-rose-100'
+                                                        }`}
+                                                    >
+                                                        <span className="text-sm">A</span>
+                                                        <span className="text-[10px] font-medium opacity-80">Alfa</span>
+                                                    </button>
+                                                </div>
+
+                                                {/* Catatan Input Box */}
+                                                {showNoteInput && (
+                                                    <div className="pt-2 border-t border-slate-100 animate-in fade-in">
+                                                        <label className="block text-[11px] font-bold text-amber-700 mb-1 flex items-center gap-1">
+                                                            <MessageSquare size={12} />
+                                                            {status === 'I' ? 'Alasan Izin' : 'Keterangan Sakit'}
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder={
+                                                                status === 'I'
+                                                                    ? 'Contoh: Lembur kerja / Acara keluarga...'
+                                                                    : 'Contoh: Demam / Berobat...'
+                                                            }
+                                                            value={note}
+                                                            onChange={(e) => handleNoteChange(m.uuid, e.target.value)}
+                                                            className="w-full px-3 py-2 bg-amber-50/50 border border-amber-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* DESKTOP TABLE VIEW (>= md) */}
+                                <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                                                <tr>
+                                                    <th className="p-4 w-12 text-center">No</th>
+                                                    <th className="p-4">Nama Jamaah</th>
+                                                    <th className="p-4">Jenjang</th>
+                                                    <th className="p-4">Kelompok</th>
+                                                    <th className="p-4 text-center w-48">Status Presensi</th>
+                                                    <th className="p-4 w-64">Catatan / Alasan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-sm">
+                                                {filteredInputMembers.map((m, idx) => {
+                                                    const status = recordsMap[m.uuid];
+                                                    const note = notesMap[m.uuid] || '';
+                                                    const showNoteInput = status === 'I' || status === 'S';
+
+                                                    return (
+                                                        <tr key={m.uuid} className="hover:bg-slate-50/80 transition-colors">
+                                                            <td className="p-4 text-center font-bold text-slate-400 text-xs">
+                                                                {m.order || idx + 1}
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <div className="font-bold text-slate-800">{m.name}</div>
+                                                                {m.alias && <div className="text-xs text-slate-400">Alias: {m.alias}</div>}
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                                                    {m.level}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-4 text-slate-600 font-medium">
+                                                                {m.kelompok}
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <div className="flex items-center justify-center gap-1.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'H')}
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
+                                                                            status === 'H'
+                                                                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 scale-105'
+                                                                                : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
+                                                                        }`}
+                                                                        title="Hadir"
+                                                                    >
+                                                                        H
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'I')}
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
+                                                                            status === 'I'
+                                                                                ? 'bg-amber-500 text-white shadow-md shadow-amber-200 scale-105'
+                                                                                : 'bg-slate-100 text-slate-600 hover:bg-amber-50 hover:text-amber-700'
+                                                                        }`}
+                                                                        title="Izin"
+                                                                    >
+                                                                        I
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'S')}
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
+                                                                            status === 'S'
+                                                                                ? 'bg-blue-500 text-white shadow-md shadow-blue-200 scale-105'
+                                                                                : 'bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+                                                                        }`}
+                                                                        title="Sakit"
+                                                                    >
+                                                                        S
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleMemberStatus(m.uuid, 'A')}
+                                                                        className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
+                                                                            status === 'A'
+                                                                                ? 'bg-rose-600 text-white shadow-md shadow-rose-200 scale-105'
+                                                                                : 'bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-700'
+                                                                        }`}
+                                                                        title="Alfa"
+                                                                    >
+                                                                        A
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                {showNoteInput ? (
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={
+                                                                            status === 'I'
+                                                                                ? 'Contoh: Lembur kerja...'
+                                                                                : 'Contoh: Demam...'
+                                                                        }
+                                                                        value={note}
+                                                                        onChange={(e) => handleNoteChange(m.uuid, e.target.value)}
+                                                                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                                                                    />
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-300 italic">-</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 ) : (
-                    <AttendanceTable
-                        members={currentMembers}
-                        days={scheduleDays}
-                        attendanceMap={attendanceMap}
-                        onToggle={handleToggle}
-                        color={currentConfig?.color}
-                    />
+                    /* ================= TAB 2: REKAP RANGE TANGGAL ================= */
+                    <div className="space-y-6">
+                        {/* Control Bar Rekap */}
+                        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+                            {/* Always Visible Date Pickers & Filter Toggle */}
+                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Dari Tanggal
+                                        </label>
+                                        <CustomDatePicker
+                                            value={rekapStartDate}
+                                            onChange={(val) => setRekapStartDate(val)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Sampai Tanggal
+                                        </label>
+                                        <CustomDatePicker
+                                            value={rekapEndDate}
+                                            onChange={(val) => setRekapEndDate(val)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all ${
+                                            showFilters
+                                                ? 'bg-slate-100 text-slate-800 border-slate-300'
+                                                : activeFilterCount > 0
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Filter size={16} />
+                                        {showFilters ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
+                                        {activeFilterCount > 0 && !showFilters && (
+                                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                                {activeFilterCount}
+                                            </span>
+                                        )}
+                                        {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Collapsible Filter Section */}
+                            {showFilters && (
+                                <div className="pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in">
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Kelompok
+                                        </label>
+                                        {profile && (profile.status === 3 || profile.status === 5) ? (
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={profile.kelompok}
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-700 font-semibold outline-none text-sm"
+                                            />
+                                        ) : (
+                                            <select
+                                                value={rekapKelompok}
+                                                onChange={(e) => setRekapKelompok(e.target.value)}
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+                                            >
+                                                <option value="SEMUA">-- Semua Kelompok --</option>
+                                                {availableKelompoks.map(k => (
+                                                    <option key={k} value={k}>{k}</option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Jenis Kelamin
+                                        </label>
+                                        <select
+                                            value={rekapGender}
+                                            onChange={(e) => setRekapGender(e.target.value)}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+                                        >
+                                            <option value="SEMUA">Semua Jenis Kelamin</option>
+                                            <option value="Laki - Laki">Laki - Laki</option>
+                                            <option value="Perempuan">Perempuan</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                            Jenjang / Level
+                                        </label>
+                                        <select
+                                            value={rekapLevel}
+                                            onChange={(e) => setRekapLevel(e.target.value)}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-sm"
+                                        >
+                                            <option value="SEMUA">
+                                                {profile?.status === 4 || profile?.status === 5 ? 'Semua Level Muda/i' : 'Semua Level'}
+                                            </option>
+                                            {availableLevelOptions.map(lvl => (
+                                                <option key={lvl} value={lvl}>{lvl}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* SESSION DATES SELECTION BOX */}
+                        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                    <CalendarDays size={18} className="text-blue-600" />
+                                    Tanggal Sesi Pengajian ({selectedSessionDates.length} / {fetchedSessions.length} Terpilih)
+                                </h3>
+                                {fetchedSessions.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleToggleAllSessions}
+                                        className="text-xs font-bold text-blue-600 hover:text-blue-700"
+                                    >
+                                        {selectedSessionDates.length === fetchedSessions.length ? 'Batal Semua' : 'Pilih Semua'}
+                                    </button>
+                                )}
+                            </div>
+
+                            {fetchedSessions.length === 0 ? (
+                                <p className="text-xs text-slate-400 italic">
+                                    Tidak ditemukan sesi absensi pada rentang tanggal ini. Silakan ubah rentang tanggal atau kriteria filter.
+                                </p>
+                            ) : (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    {fetchedSessions.map(s => {
+                                        const isSelected = selectedSessionDates.includes(s.date);
+                                        return (
+                                            <button
+                                                key={s.date}
+                                                type="button"
+                                                onClick={() => toggleSessionDate(s.date)}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                                                    isSelected
+                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
+                                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                <Check size={14} className={isSelected ? 'opacity-100' : 'opacity-0'} />
+                                                {dayjs(s.date).format('dddd, DD MMM YYYY')}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* RINGKASAN GABUNGAN (DONUT CHART) & PER LEVEL */}
+                        {selectedSessionDates.length > 0 && (
+                            <div className="space-y-6">
+                                {/* GABUNGAN SEMUA JENJANG (PIE / DONUT CHART CARD) */}
+                                <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 text-white rounded-2xl p-6 shadow-xl space-y-6">
+                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                                        {/* Left Header Info */}
+                                        <div className="space-y-1">
+                                            <span className="text-xs font-bold tracking-wider text-blue-400 uppercase block">Ringkasan Kehadiran Gabungan</span>
+                                            <h3 className="text-2xl font-black text-white">Semua Jenjang / Level</h3>
+                                            <p className="text-xs text-slate-300">
+                                                Total {overallSummary.totalMembers} Jamaah • {overallSummary.totalSessions} Sesi Pengajian ({overallSummary.totalExpected} Presensi Diharapkan)
+                                            </p>
+                                        </div>
+
+                                        {/* Center: Interactive Conic Gradient Donut Chart */}
+                                        <div className="flex items-center justify-center gap-6 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm self-start lg:self-auto">
+                                            <div
+                                                className="w-36 h-36 rounded-full flex items-center justify-center shadow-lg relative flex-shrink-0"
+                                                style={{
+                                                    background: `conic-gradient(
+                                                        #10b981 0% ${overallSummary.pctHadir}%,
+                                                        #f59e0b ${overallSummary.pctHadir}% ${overallSummary.pctHadir + overallSummary.pctIzinSakit}%,
+                                                        #f43f5e ${overallSummary.pctHadir + overallSummary.pctIzinSakit}% 100%
+                                                    )`
+                                                }}
+                                            >
+                                                <div className="w-24 h-24 bg-slate-900 rounded-full flex flex-col items-center justify-center text-white shadow-inner">
+                                                    <span className="text-2xl font-black text-emerald-400">{overallSummary.pctHadir}%</span>
+                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hadir</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Donut Legend */}
+                                            <div className="space-y-2 text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0" />
+                                                    <div>
+                                                        <span className="font-bold text-white block">{overallSummary.pctHadir}% Hadir</span>
+                                                        <span className="text-[10px] text-slate-400">{overallSummary.H} presensi</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-amber-500 flex-shrink-0" />
+                                                    <div>
+                                                        <span className="font-bold text-white block">{overallSummary.pctIzinSakit}% Izin & Sakit</span>
+                                                        <span className="text-[10px] text-slate-400">{overallSummary.IS} presensi (I: {overallSummary.I}, S: {overallSummary.S})</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-rose-500 flex-shrink-0" />
+                                                    <div>
+                                                        <span className="font-bold text-white block">{overallSummary.pctAlfa}% Alfa</span>
+                                                        <span className="text-[10px] text-slate-400">{overallSummary.A} presensi</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 3 Category Main Stat Cards */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                                        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[11px] font-bold text-emerald-400 block uppercase">Hadir</span>
+                                                <span className="text-2xl font-black text-white">{overallSummary.pctHadir}%</span>
+                                                <span className="text-xs text-slate-300 block mt-0.5">{overallSummary.H} / {overallSummary.totalExpected} presensi</span>
+                                            </div>
+                                            <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-lg">
+                                                H
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[11px] font-bold text-amber-400 block uppercase">Izin & Sakit</span>
+                                                <span className="text-2xl font-black text-white">{overallSummary.pctIzinSakit}%</span>
+                                                <span className="text-xs text-slate-300 block mt-0.5">{overallSummary.IS} presensi (I: {overallSummary.I}, S: {overallSummary.S})</span>
+                                            </div>
+                                            <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-lg">
+                                                I+S
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[11px] font-bold text-rose-400 block uppercase">Alfa</span>
+                                                <span className="text-2xl font-black text-white">{overallSummary.pctAlfa}%</span>
+                                                <span className="text-xs text-slate-300 block mt-0.5">{overallSummary.A} / {overallSummary.totalExpected} presensi</span>
+                                            </div>
+                                            <div className="w-12 h-12 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-black text-lg">
+                                                A
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* PER LEVEL BREAKDOWN CARDS GRID */}
+                                {levelSummaries.length > 0 && (
+                                    <div className="space-y-3">
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Persentase Kehadiran Per Jenjang / Level</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {levelSummaries.map(lvl => (
+                                                <div key={lvl.level} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <h5 className="font-bold text-slate-900 text-lg">{lvl.level}</h5>
+                                                            <p className="text-xs text-slate-400">{lvl.totalMembers} Jamaah • {lvl.totalExpected} Presensi</p>
+                                                        </div>
+                                                        {/* Mini Conic Gradient Donut */}
+                                                        <div
+                                                            className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
+                                                            style={{
+                                                                background: `conic-gradient(
+                                                                    #10b981 0% ${lvl.pctHadir}%,
+                                                                    #f59e0b ${lvl.pctHadir}% ${lvl.pctHadir + lvl.pctIzinSakit}%,
+                                                                    #f43f5e ${lvl.pctHadir + lvl.pctIzinSakit}% 100%
+                                                                )`
+                                                            }}
+                                                        >
+                                                            <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-[10px] font-black text-slate-800">
+                                                                {lvl.pctHadir}%
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 3 Segment Multi Bar */}
+                                                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden flex">
+                                                        <div className="bg-emerald-500 h-full transition-all" style={{ width: `${lvl.pctHadir}%` }} title={`Hadir: ${lvl.pctHadir}%`} />
+                                                        <div className="bg-amber-500 h-full transition-all" style={{ width: `${lvl.pctIzinSakit}%` }} title={`Izin & Sakit: ${lvl.pctIzinSakit}%`} />
+                                                        <div className="bg-rose-500 h-full transition-all" style={{ width: `${lvl.pctAlfa}%` }} title={`Alfa: ${lvl.pctAlfa}%`} />
+                                                    </div>
+
+                                                    {/* 3 Category Stat Cards */}
+                                                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                                        <div className="bg-emerald-50 rounded-xl p-2 border border-emerald-100">
+                                                            <span className="text-[10px] text-emerald-600 font-bold block uppercase">Hadir</span>
+                                                            <span className="text-sm font-black text-emerald-700">{lvl.pctHadir}%</span>
+                                                            <span className="text-[10px] text-emerald-600 block">{lvl.H} presensi</span>
+                                                        </div>
+                                                        <div className="bg-amber-50 rounded-xl p-2 border border-amber-100">
+                                                            <span className="text-[10px] text-amber-600 font-bold block uppercase">Izin & Sakit</span>
+                                                            <span className="text-sm font-black text-amber-700">{lvl.pctIzinSakit}%</span>
+                                                            <span className="text-[10px] text-amber-600 block">{lvl.IS} presensi</span>
+                                                        </div>
+                                                        <div className="bg-rose-50 rounded-xl p-2 border border-rose-100">
+                                                            <span className="text-[10px] text-rose-600 font-bold block uppercase">Alfa</span>
+                                                            <span className="text-sm font-black text-rose-700">{lvl.pctAlfa}%</span>
+                                                            <span className="text-[10px] text-rose-600 block">{lvl.A} presensi</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Search & Export Bar */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                            {/* SEARCH BAR REKAP */}
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Cari rekap jamaah atau alias..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-10 py-2.5 bg-white rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-sm">
+                                    <span>Sesi:</span>
+                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-lg">{totalScheduledDays} Sesi</span>
+                                </div>
+                                <button
+                                    onClick={handleExportExcel}
+                                    className="px-3.5 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
+                                >
+                                    <FileSpreadsheet size={16} /> Excel
+                                </button>
+                                <button
+                                    onClick={handlePrintPDF}
+                                    className="px-3.5 py-2.5 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
+                                >
+                                    <FileText size={16} /> Cetak
+                                </button>
+                                <button
+                                    onClick={() => setIsShareModalOpen(true)}
+                                    className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-200 transition-all"
+                                >
+                                    <Share2 size={16} /> WA
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Rekap Table / List Container */}
+                        {isRekapLoading ? (
+                            <div className="bg-white rounded-2xl p-16 flex flex-col items-center justify-center text-slate-400 border border-slate-200 shadow-sm">
+                                <Loader2 className="animate-spin mb-2" size={32} />
+                                <p className="text-sm font-medium">Kalkulasi rekap presensi...</p>
+                            </div>
+                        ) : filteredRekapData.length === 0 ? (
+                            <div className="bg-white rounded-2xl p-12 text-center text-slate-500 border border-slate-200 shadow-sm">
+                                <AlertCircle size={40} className="mx-auto mb-3 text-slate-300" />
+                                <p className="font-bold text-slate-700">Data rekap tidak ditemukan</p>
+                                <p className="text-xs text-slate-400 mt-1">Coba ubah rentang tanggal, pencarian, atau kriteria filter kelompok.</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* REKAP MOBILE CARDS (< md) */}
+                                <div className="md:hidden space-y-3">
+                                    {filteredRekapData.map((row, idx) => (
+                                        <div
+                                            key={row.memberId}
+                                            className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3"
+                                        >
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
+                                                        {idx + 1}
+                                                    </span>
+                                                    <div>
+                                                        <h4 className="font-bold text-slate-900 text-base leading-snug">{row.name}</h4>
+                                                        {row.alias && <p className="text-xs text-slate-400">Alias: {row.alias}</p>}
+                                                    </div>
+                                                </div>
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                                                    row.percentage >= 80
+                                                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                        : row.percentage >= 50
+                                                        ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                                        : 'bg-rose-100 text-rose-700 border-rose-200'
+                                                }`}>
+                                                    {row.percentage}%
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold">{row.kelompok}</span>
+                                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold">{row.level}</span>
+                                            </div>
+
+                                            <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-center">
+                                                <div className="bg-emerald-50 rounded-xl p-2 border border-emerald-100">
+                                                    <span className="text-[10px] text-emerald-600 font-bold block uppercase">Hadir</span>
+                                                    <span className="text-base font-black text-emerald-700">{row.H}</span>
+                                                </div>
+                                                <div className="bg-amber-50 rounded-xl p-2 border border-amber-100">
+                                                    <span className="text-[10px] text-amber-600 font-bold block uppercase">Izin</span>
+                                                    <span className="text-base font-black text-amber-700">{row.I}</span>
+                                                </div>
+                                                <div className="bg-blue-50 rounded-xl p-2 border border-blue-100">
+                                                    <span className="text-[10px] text-blue-600 font-bold block uppercase">Sakit</span>
+                                                    <span className="text-base font-black text-blue-700">{row.S}</span>
+                                                </div>
+                                                <div className="bg-rose-50 rounded-xl p-2 border border-rose-100">
+                                                    <span className="text-[10px] text-rose-600 font-bold block uppercase">Alfa</span>
+                                                    <span className="text-base font-black text-rose-700">{row.A}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* REKAP DESKTOP TABLE (>= md) */}
+                                <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                                                <tr>
+                                                    <th className="p-4 w-12 text-center">No</th>
+                                                    <th className="p-4">Nama Jamaah</th>
+                                                    <th className="p-4">Kelompok</th>
+                                                    <th className="p-4">Jenjang</th>
+                                                    <th className="p-4 text-center text-emerald-600">Hadir</th>
+                                                    <th className="p-4 text-center text-amber-600">Izin</th>
+                                                    <th className="p-4 text-center text-blue-600">Sakit</th>
+                                                    <th className="p-4 text-center text-rose-600">Alfa</th>
+                                                    <th className="p-4 text-center">Total Sesi</th>
+                                                    <th className="p-4 text-center">% Kehadiran</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-sm">
+                                                {filteredRekapData.map((row, idx) => (
+                                                    <tr key={row.memberId} className="hover:bg-slate-50/80 transition-colors">
+                                                        <td className="p-4 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
+                                                        <td className="p-4 font-bold text-slate-800">
+                                                            {row.name}
+                                                            {row.alias && <span className="text-xs text-slate-400 block font-normal">Alias: {row.alias}</span>}
+                                                        </td>
+                                                        <td className="p-4 text-slate-600 font-medium">{row.kelompok}</td>
+                                                        <td className="p-4">
+                                                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                                                {row.level}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 text-center font-bold text-emerald-600">{row.H}</td>
+                                                        <td className="p-4 text-center font-bold text-amber-600">{row.I}</td>
+                                                        <td className="p-4 text-center font-bold text-blue-600">{row.S}</td>
+                                                        <td className="p-4 text-center font-bold text-rose-600">{row.A}</td>
+                                                        <td className="p-4 text-center font-semibold text-slate-600">{row.totalScheduled}</td>
+                                                        <td className="p-4 text-center">
+                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border inline-block ${
+                                                                row.percentage >= 80
+                                                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                                    : row.percentage >= 50
+                                                                    ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                                                    : 'bg-rose-100 text-rose-700 border-rose-200'
+                                                            }`}>
+                                                                {row.percentage}%
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
 
-            {/* ================= FLOATING ACTIONS (MOBILE ONLY) ================= */}
-            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 z-50 w-full max-w-sm px-4 md:hidden">
-                <button onClick={handleExportExcel} className="flex-1 bg-white border border-emerald-200 text-emerald-700 shadow-xl py-3 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm">
-                    <Download size={18} /> Excel
-                </button>
-                <button onClick={() => { setSelectedShareGroup(activeTab); setIsShareModalOpen(true); }} className="flex-[2] bg-emerald-600 text-white shadow-xl py-3 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm">
-                    <Share2 size={18} /> Share WA
-                </button>
-            </div>
-
-            {/* ================= MODAL SHARE ================= */}
+            {/* Modal Share WA */}
             {isShareModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-0 md:p-4 animate-in fade-in">
-                    <div className="bg-white rounded-t-3xl md:rounded-2xl w-full max-w-sm p-4 shadow-2xl animate-in slide-in-from-bottom-10">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl animate-in zoom-in-95">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-lg">Share WhatsApp</h3>
-                            <button onClick={() => setIsShareModalOpen(false)}><X size={20} className="text-slate-400" /></button>
+                            <h3 className="font-bold text-slate-800 text-base">Share Rekap WhatsApp</h3>
+                            <button onClick={() => setIsShareModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={20} />
+                            </button>
                         </div>
-                        <div className="space-y-2 mb-4">
-                            {CATEGORIES.map(c => (
-                                <div key={c.id} onClick={() => setSelectedShareGroup(c.id)} className={`p-3 border rounded-xl flex justify-between items-center ${selectedShareGroup === c.id ? 'bg-green-50 border-green-500 text-green-700' : 'border-slate-200'}`}>
-                                    <span className="font-bold text-sm">{c.label}</span>
-                                    {selectedShareGroup === c.id && <CheckCircle2 size={18} />}
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={executeShareWA} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold shadow-lg">Kirim Sekarang</button>
+                        <p className="text-xs text-slate-500 mb-4">
+                            Format ringkasan presensi akan disiapkan untuk dikirimkan ke grup WhatsApp.
+                        </p>
+                        <button
+                            onClick={executeShareWA}
+                            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2 text-sm"
+                        >
+                            <Share2 size={18} /> Kirim Sekarang
+                        </button>
                     </div>
                 </div>
             )}
         </div>
     );
 }
-
-// --- HYBRID TABLE COMPONENT ---
-const AttendanceTable = ({ members, days, attendanceMap, onToggle, color }: any) => {
-    // Style border header sesuai warna kategori
-    const borderClass = {
-        blue: 'border-blue-500', red: 'border-red-500', rose: 'border-rose-500'
-    }[color as string] || 'border-slate-500';
-
-    return (
-        <div className={`bg-white md:rounded-2xl shadow-sm border-t-4 ${borderClass} overflow-hidden`}>
-            <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 text-slate-500 sticky top-0 z-20 shadow-sm">
-                        <tr>
-                            {/* NO: Hidden di Mobile, Show di Desktop */}
-                            <th className="hidden md:table-cell p-3 border-b border-r border-slate-200 text-center w-10 text-xs font-bold">No</th>
-
-                            {/* NAMA: Sticky di Mobile (shadow), Static/Sticky di Desktop */}
-                            <th className="sticky left-0 z-30 bg-slate-50 p-3 border-b border-r border-slate-200 w-[140px] md:w-[250px] shadow-[4px_0_10px_-5px_rgba(0,0,0,0.1)] md:shadow-none">
-                                <span className="text-xs font-bold uppercase">Nama Anggota</span>
-                            </th>
-
-                            {/* TANGGAL */}
-                            {days.map((d: any) => (
-                                <th key={d.date} className="p-2 border-b border-slate-200 text-center min-w-[3.5rem] border-r border-slate-100">
-                                    <div className="flex flex-col items-center">
-                                        <span className="text-[10px] md:text-[9px] uppercase font-bold text-slate-400 mb-0.5">{d.shortDay}</span>
-                                        {/* Mobile: Kotak tanggal. Desktop: Teks biasa saja */}
-                                        <span className="text-sm font-black text-slate-700 md:text-slate-600 bg-white md:bg-transparent border md:border-none border-slate-200 rounded-lg w-8 h-8 md:w-auto md:h-auto flex items-center justify-center shadow-sm md:shadow-none">
-                                            {d.date}
-                                        </span>
-                                    </div>
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {members.map((m: any, idx: number) => (
-                            <tr key={m.uuid} className="group bg-white hover:bg-slate-50">
-                                {/* NO: Desktop Only */}
-                                <td className="hidden md:table-cell text-center text-xs text-slate-400 font-bold border-r border-slate-100">
-                                    {m.order || idx + 1}
-                                </td>
-
-                                {/* NAMA: Sticky Mobile */}
-                                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 p-3 border-r border-slate-100 shadow-[4px_0_10px_-5px_rgba(0,0,0,0.05)] md:shadow-none">
-                                    <div className="flex flex-col justify-center h-10 md:h-auto">
-                                        <span className="text-sm font-semibold text-slate-700 truncate w-[110px] md:w-auto block">
-                                            {m.alias || m.name}
-                                        </span>
-                                        {/* Mobile Only: Nomor urut di bawah nama */}
-                                        <span className="md:hidden text-[10px] text-slate-400">No. {m.order || idx + 1}</span>
-                                    </div>
-                                </td>
-
-                                {/* CELLS */}
-                                {days.map((d: any) => {
-                                    const status = attendanceMap[`${m.uuid}-${d.fullDate}`];
-
-                                    // --- LOGIC TAMPILAN GANDA ---
-                                    let mobileContent = <div className="w-2 h-2 rounded-full bg-slate-200 mx-auto" />;
-                                    let desktopClass = "md:text-slate-300 md:hover:bg-slate-100";
-                                    let desktopText = "-";
-
-                                    if (status === 'H') {
-                                        mobileContent = <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">H</div>;
-                                        desktopClass = "md:bg-emerald-100 md:text-emerald-700 md:font-bold";
-                                        desktopText = "H";
-                                    } else if (status === 'I') {
-                                        mobileContent = <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">I</div>;
-                                        desktopClass = "md:bg-amber-100 md:text-amber-700 md:font-bold";
-                                        desktopText = "I";
-                                    } else if (status === 'S') {
-                                        mobileContent = <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 text-blue-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">S</div>;
-                                        desktopClass = "md:bg-blue-100 md:text-blue-700 md:font-bold";
-                                        desktopText = "S";
-                                    } else if (status === 'A') {
-                                        mobileContent = <div className="w-8 h-8 rounded-full bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center font-bold text-xs shadow-sm mx-auto">A</div>;
-                                        desktopClass = "md:bg-rose-100 md:text-rose-700 md:font-bold";
-                                        desktopText = "A";
-                                    }
-
-                                    return (
-                                        <td
-                                            key={d.date}
-                                            onClick={() => onToggle(m.uuid, d.fullDate)}
-                                            className={`border-r border-slate-50 cursor-pointer select-none transition-colors active:scale-95 text-center ${desktopClass}`}
-                                        >
-                                            {/* CONTAINER MOBILE: Tinggi, pakai Badge Bulat */}
-                                            <div className="md:hidden h-14 flex items-center justify-center">
-                                                {mobileContent}
-                                            </div>
-
-                                            {/* CONTAINER DESKTOP: Pendek, Full Cell Color (Hidden di Mobile) */}
-                                            <div className="hidden md:block py-2">
-                                                {desktopText}
-                                            </div>
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};

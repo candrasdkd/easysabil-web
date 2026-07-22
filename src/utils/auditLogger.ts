@@ -3,7 +3,7 @@ import { db } from '../firebase/client';
 import type { UserProfile } from '../contexts/AuthContext';
 
 export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'IMPORT' | 'EXPORT';
-export type AuditEntity = 'MEMBER' | 'FAMILY' | 'ORDER' | 'SYSTEM';
+export type AuditEntity = 'MEMBER' | 'FAMILY' | 'ORDER' | 'SYSTEM' | 'ATTENDANCE';
 
 export interface AuditLogEntry {
     action: AuditAction;

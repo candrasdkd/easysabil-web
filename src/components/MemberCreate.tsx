@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, orderBy, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -18,12 +18,20 @@ import {
     GraduationCap,
     Tag,
     HandHeart,
-    ListOrdered
+    ListOrdered,
+    Briefcase,
+    BookOpen
 } from 'lucide-react';
 import { type Familys } from '../types/Member';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
+import {
+    OCCUPATION_STATUS_OPTIONS,
+    SAMBUNG_NGAJI_STATUS_OPTIONS,
+    isMudaMudiRole,
+    isMudaMudiLevel
+} from '../constants/mudaMudiOptions';
 
 
 const Label = ({ children, required }: { children: React.ReactNode, required?: boolean }) => (
@@ -62,7 +70,9 @@ export default function MemberCreate() {
         is_educate: false,
         is_duafa: false,
         age: '0 Bulan',
-        order: 99
+        order: 99,
+        occupation_status: '',
+        sambung_ngaji_status: ''
     };
 
     const [formValues, setFormValues] = useState(INITIAL_FORM_VALUES);
@@ -212,7 +222,21 @@ export default function MemberCreate() {
 
             const { error, id: newDocId } = await addDoc(collection(db, 'sensus'), cleanBody).then(docRef => ({ error: null, id: docRef.id })).catch(err => ({ error: err, id: null }));
             if (error) throw error;
-            // console.log(error);
+
+            // Handle Muda/i info subcollection
+            if (newDocId && isMudaMudiRole(profile?.status) && isMudaMudiLevel(formValues.education)) {
+                if (formValues.occupation_status || formValues.sambung_ngaji_status) {
+                    const mudaMudiData = {
+                        occupation_status: formValues.occupation_status || '',
+                        sambung_ngaji_status: formValues.sambung_ngaji_status || '',
+                        updated_at: serverTimestamp(),
+                        updated_by: profile?.uid || ''
+                    };
+                    await setDoc(doc(db, 'sensus', newDocId, 'muda_mudi_info', 'detail'), mudaMudiData);
+                    await logAudit('UPDATE', 'MEMBER', newDocId, formValues.name, profile, mudaMudiData, 'Inisialisasi info Muda/i (Pekerjaan/Sambung Ngaji)');
+                }
+            }
+
             // Sukses toast update
             toast.success('Data berhasil disimpan', { id: toastId });
 
@@ -473,6 +497,56 @@ export default function MemberCreate() {
                             )}
                         </div>
                     </div>
+
+                    {/* Informasi Khusus Muda/i (Pekerjaan/Pendidikan & Sambung Ngaji) */}
+                    {isMudaMudiRole(profile?.status) && isMudaMudiLevel(formValues.education) && (
+                        <div className="p-6 sm:p-8 bg-blue-50/40 border-t border-slate-100">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-6">
+                                <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"><Briefcase size={18} /></div>
+                                Informasi Khusus Muda/i
+                            </h3>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <Label>Status Pekerjaan / Pelajar</Label>
+                                    <div className="relative">
+                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <select
+                                            name="occupation_status"
+                                            value={formValues.occupation_status}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                                        >
+                                            <option value="">-- Pilih Status --</option>
+                                            {OCCUPATION_STATUS_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <Label>Status Sambung Ngaji</Label>
+                                    <div className="relative">
+                                        <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <select
+                                            name="sambung_ngaji_status"
+                                            value={formValues.sambung_ngaji_status}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                                        >
+                                            <option value="">-- Pilih Status --</option>
+                                            {SAMBUNG_NGAJI_STATUS_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="p-6 sm:p-8 border-t border-slate-100 bg-white flex flex-col-reverse sm:flex-row justify-end gap-3">
                         <button type="button" onClick={() => setFormValues(INITIAL_FORM_VALUES)} className="px-6 py-3 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors">Reset Form</button>

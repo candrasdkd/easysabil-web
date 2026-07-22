@@ -17,6 +17,7 @@ import {
     AlertTriangle,
     PanelLeftClose,
     PanelLeftOpen,
+    CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -24,6 +25,7 @@ const baseNavItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
     { label: 'Sensus', path: '/members', icon: Users },
     { label: 'Keluarga', path: '/families', icon: Home },
+    { label: 'Absensi', path: '/attendance', icon: CalendarDays },
 ];
 
 interface SidebarProps {
