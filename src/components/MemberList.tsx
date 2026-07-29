@@ -100,6 +100,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     // Educate Filter
     const [educateFilter, setEducateFilter] = useState<'Semua' | 'Jamaah' | 'Binaan'>(() => getSavedState('educateFilter', 'Semua'));
 
+    // Duafa Filter
+    const [duafaFilter, setDuafaFilter] = useState<'Semua' | 'Duafa' | 'Bukan Duafa'>(() => getSavedState('duafaFilter', 'Semua'));
+
     // Data State: families dari store (ter-cache, tidak re-fetch tiap navigasi)
     const { families: familiesFromStore, fetchFamilies } = useFamiliesStore();
     const listFamily = familiesFromStore as any as Family[];
@@ -131,10 +134,11 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             selectedFamily,
             familySearchKeyword,
             selectedKelompok,
-            educateFilter
+            educateFilter,
+            duafaFilter
         };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
-    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok, educateFilter]);
+    }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok, educateFilter, duafaFilter]);
 
     // --- Logic Helper ---
     const formatAge = (dob: string | null | undefined) => {
@@ -176,6 +180,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
         if (educateFilter === 'Jamaah') filtered = filtered.filter(m => !m.is_educate);
         if (educateFilter === 'Binaan') filtered = filtered.filter(m => m.is_educate);
+
+        if (duafaFilter === 'Duafa') filtered = filtered.filter(m => m.is_duafa);
+        if (duafaFilter === 'Bukan Duafa') filtered = filtered.filter(m => !m.is_duafa);
 
         if (memberStatus === 'Aktif') filtered = filtered.filter(m => m.is_active);
         if (memberStatus === 'Tidak Aktif') filtered = filtered.filter(m => !m.is_active);
@@ -225,7 +232,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             return sortConfig.direction === 'asc' ? comparison : -comparison;
         });
         return filtered;
-    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily, selectedKelompok, listFamily]);
+    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily, selectedKelompok, listFamily, educateFilter, duafaFilter]);
 
     const paginatedMembers = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -249,6 +256,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         setFamilySearchKeyword('');
         setSelectedKelompok('');
         setEducateFilter('Semua');
+        setDuafaFilter('Semua');
         setSearchText('');
         setCurrentPage(1);
         sessionStorage.removeItem(STORAGE_KEY);
@@ -759,13 +767,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <button
                         onClick={() => setIsFilterOpen(true)}
                         className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 border rounded-xl font-medium transition-all flex-1 md:flex-none
-                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily || educateFilter !== 'Semua')
+                            ${(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily || educateFilter !== 'Semua' || duafaFilter !== 'Semua')
                                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
                         <Filter size={18} />
                         <span className="hidden sm:inline">Filter</span>
-                        {(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily || educateFilter !== 'Semua')
+                        {(selectedGender.length || selectedLevel.length || selectedMarriageStatus.length || memberStatus !== 'Aktif' || selectedFamily || educateFilter !== 'Semua' || duafaFilter !== 'Semua')
                             ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-bold sm:hidden">!</span>
                             : null}
                     </button>
@@ -850,6 +858,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                         )}
                                         {!row.is_active && <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded border border-red-200">NON-AKTIF</span>}
                                         {row.is_educate && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200 uppercase">Binaan</span>}
+                                        {row.is_duafa && <span className="ml-2 text-[10px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded border border-rose-200 uppercase font-semibold">Duafa</span>}
                                     </td>
                                     <td className="px-6 py-4"><Badge color="blue">{row.level}</Badge></td>
                                     <td className="px-6 py-4">{row.gender}</td>
@@ -991,6 +1000,23 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                         <option value="Semua">Semua (Jamaah & Binaan)</option>
                                         <option value="Jamaah">Jamaah Saja (Bukan Binaan)</option>
                                         <option value="Binaan">Binaan Saja</option>
+                                    </select>
+                                    <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
+                                </div>
+                            </div>
+
+                            {/* Status Duafa */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Status Duafa</label>
+                                <div className="relative">
+                                    <select
+                                        value={duafaFilter}
+                                        onChange={(e) => setDuafaFilter(e.target.value as any)}
+                                        className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
+                                    >
+                                        <option value="Semua">Semua (Duafa & Non-Duafa)</option>
+                                        <option value="Duafa">Duafa Saja</option>
+                                        <option value="Bukan Duafa">Bukan Duafa Saja</option>
                                     </select>
                                     <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={18} />
                                 </div>
