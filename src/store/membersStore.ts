@@ -3,8 +3,8 @@ import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebas
 import { db } from '../firebase/client';
 import { type Member } from '../types/Member';
 
-// Cache TTL: 10 menit
-const CACHE_TTL_MS = 10 * 60 * 1000;
+// Cache TTL: 5 menit
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const isCacheValid = (lastFetchedAt: number | null) =>
     lastFetchedAt !== null && Date.now() - lastFetchedAt < CACHE_TTL_MS;
@@ -44,7 +44,7 @@ export const useMembersStore = create<AllMembersState>((set, get) => ({
         }
     },
 
-    invalidate: () => set({ lastFetchedAt: null }),
+    invalidate: () => set({ lastFetchedAt: null, loading: false }),
 }));
 
 // ─────────────────────────────────────────────────────────
@@ -148,5 +148,5 @@ export const useRoleMembersStore = create<RoleMembersState>((set, get) => ({
         }
     },
 
-    invalidate: () => set({ lastFetchedAt: null, isInitialized: false }),
+    invalidate: () => set({ lastFetchedAt: null, isInitialized: false, loading: false }),
 }));

@@ -14,6 +14,14 @@ export default function MembersListPage() {
         if (profile) fetchByRole(profile);
     }, [profile, fetchByRole]);
 
+    // Re-fetch ketika cache di-invalidate (misal setelah edit/create/delete)
+    // isInitialized akan jadi false setelah invalidate() dipanggil
+    useEffect(() => {
+        if (profile && !isInitialized && !isLoading) {
+            fetchByRole(profile);
+        }
+    }, [isInitialized, profile, isLoading, fetchByRole]);
+
     // Sync ke localStorage store (agar kompatibel dengan kode lain yang masih pakai getMembersStore)
     useEffect(() => {
         if (members.length > 0) setMembersStore(members);
