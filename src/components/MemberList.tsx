@@ -115,6 +115,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     // UI Toggles
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
 
@@ -287,8 +288,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             });
     };
 
-    // --- NEW: ADVANCED EXCEL EXPORT (GROUPED BY FAMILY) ---
-    const handleExportExcel = () => {
+    // --- ADVANCED EXCEL EXPORT (GROUPED BY FAMILY WITH OPTIONS) ---
+    const handleExportExcel = (exportType: 'simple' | 'full' = 'simple') => {
+        setIsExportModalOpen(false);
         const toastId = toast.loading('Menyiapkan file Excel...');
 
         // 1. Grouping Data berdasarkan Nama Keluarga
@@ -310,64 +312,86 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         // 2. Membentuk Struktur Baris Excel (Array of Arrays)
         const excelRows: any[][] = [];
 
-        // Header Kolom Standar
-        const tableHeaders = [
-            'No', 'Nama Panggilan', 'Nama Asli', 'Jenjang',
-            'Gender', 'Umur', 'Tgl Lahir', 'Status Nikah', 'Status Keaktifan'
-        ];
-
-        // Loop setiap keluarga
-        Object.keys(groupedData).forEach((family) => {
-            // A. Judul Keluarga (Huruf Besar)
-            excelRows.push([`KELUARGA: ${family.toUpperCase()}`]);
-
-            // B. Header Tabel untuk grup ini
+        if (exportType === 'simple') {
+            const tableHeaders = ['No', 'Nama Panggilan', 'Nama Asli'];
             excelRows.push(tableHeaders);
 
-            // C. Baris Data Anggota Keluarga
-            // Sort anggota berdasarkan 'order' atau 'name' di dalam keluarga
-            const familyMembers = groupedData[family].sort((a, b) => (a.order || 999) - (b.order || 999));
-
-            familyMembers.forEach((row, index) => {
-                excelRows.push([
-                    index + 1, // Nomor urut per keluarga
-                    row.alias || row.name,
-                    row.name,
-                    row.level,
-                    row.gender,
-                    formatAge(row.date_of_birth),
-                    row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-',
-                    row.marriage_status,
-                    row.is_active ? 'Aktif' : 'Non-Aktif'
-                ]);
+            const sortedForExcel = [...processedMembers].sort((a, b) => {
+                const orderDiff = (a.order || 999) - (b.order || 999);
+                if (orderDiff !== 0) return orderDiff;
+                const nameA = (a.alias || a.name || '').trim();
+                const nameB = (b.alias || b.name || '').trim();
+                return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
             });
 
-            // D. Baris Kosong sebagai pemisah antar keluarga
-            excelRows.push(['']);
-            excelRows.push(['']);
-        });
+            sortedForExcel.forEach((row, index) => {
+                excelRows.push([
+                    index + 1,
+                    row.alias || row.name,
+                    row.name
+                ]);
+            });
+        } else {
+            const tableHeaders = [
+                'No', 'Nama Panggilan', 'Nama Asli', 'Jenjang',
+                'Gender', 'Umur', 'Tgl Lahir', 'Status Nikah', 'Status Keaktifan'
+            ];
+
+            Object.keys(groupedData).forEach((family) => {
+                excelRows.push([`KELUARGA: ${family.toUpperCase()}`]);
+                excelRows.push(tableHeaders);
+
+                const familyMembers = groupedData[family].sort((a, b) => (a.order || 999) - (b.order || 999));
+
+                familyMembers.forEach((row, index) => {
+                    excelRows.push([
+                        index + 1,
+                        row.alias || row.name,
+                        row.name,
+                        row.level,
+                        row.gender,
+                        formatAge(row.date_of_birth),
+                        row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-',
+                        row.marriage_status,
+                        row.is_active ? 'Aktif' : 'Non-Aktif'
+                    ]);
+                });
+
+                excelRows.push(['']);
+                excelRows.push(['']);
+            });
+        }
 
         // 3. Buat Worksheet dari Array of Arrays
         const ws = XLSX.utils.aoa_to_sheet(excelRows);
 
-        // 4. Atur lebar kolom (opsional, biar agak rapi saat dibuka)
-        ws['!cols'] = [
-            { wch: 5 },  // No
-            { wch: 20 }, // Nama Panggilan
-            { wch: 30 }, // Nama Asli
-            { wch: 10 }, // Jenjang
-            { wch: 15 }, // Gender
-            { wch: 10 }, // Umur
-            { wch: 15 }, // Tgl Lahir
-            { wch: 15 }, // Status Nikah
-            { wch: 15 }, // Status
-        ];
+        // 4. Atur lebar kolom
+        if (exportType === 'simple') {
+            ws['!cols'] = [
+                { wch: 8 },  // No
+                { wch: 25 }, // Nama Panggilan
+                { wch: 35 }, // Nama Asli
+            ];
+        } else {
+            ws['!cols'] = [
+                { wch: 5 },  // No
+                { wch: 20 }, // Nama Panggilan
+                { wch: 30 }, // Nama Asli
+                { wch: 10 }, // Jenjang
+                { wch: 15 }, // Gender
+                { wch: 10 }, // Umur
+                { wch: 15 }, // Tgl Lahir
+                { wch: 15 }, // Status Nikah
+                { wch: 15 }, // Status
+            ];
+        }
 
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Data Per Keluarga');
+        const sheetName = exportType === 'simple' ? 'Urutan & Nama' : 'Data Per Keluarga';
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
         // 5. Download File
-        const fileName = `Data_Jamaah_Grouped_${dayjs().format('DD-MM-YYYY')}.xlsx`;
+        const fileName = `Data_Jamaah_${exportType === 'simple' ? 'Simple' : 'Lengkap'}_${dayjs().format('DD-MM-YYYY')}.xlsx`;
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
 
@@ -785,7 +809,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                         <span className="hidden sm:inline">Bagikan</span>
                     </button>
                     <button
-                        onClick={handleExportExcel}
+                        onClick={() => setIsExportModalOpen(true)}
                         className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-medium hover:bg-emerald-100 transition-all flex-1 md:flex-none"
                     >
                         <Download size={18} />
@@ -874,10 +898,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     ) : (
                                         <>
                                             <td className="px-6 py-4">{row.marriage_status}</td>
-                                            <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
                                         </>
                                     )}
                                     <td className="px-6 py-4 text-slate-500">{highlightMatch(row.family_name, searchText)}</td>
+                                    {(profile?.status !== 4 && profile?.status !== 5) && (
+                                        <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
+                                    )}
 
                                     <td
                                         className="px-6 py-4 text-center sticky right-0 z-20 bg-white group-hover:bg-blue-50 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]"
@@ -1237,6 +1263,49 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     </label>
                                     <p className="text-xs text-slate-500 mt-2 text-center">Pilih file Excel yang salah, dan sistem akan menghapus member di database yang memiliki nama yang sama dengan di file Anda.</p>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- EXPORT EXCEL MODAL --- */}
+            {isExportModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                <Download size={18} className="text-emerald-600" /> Export File Excel
+                            </h3>
+                            <button onClick={() => setIsExportModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-slate-600">Pilih opsi format file Excel yang ingin diunduh:</p>
+
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={() => handleExportExcel('simple')}
+                                    className="w-full text-left p-4 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl transition-all group"
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="font-semibold text-emerald-900 group-hover:text-emerald-950 text-sm">Urutan &amp; Nama Saja</span>
+                                        <span className="px-2 py-0.5 bg-emerald-200/70 text-emerald-800 text-[11px] font-bold rounded-md">Ringkas</span>
+                                    </div>
+                                    <p className="text-xs text-emerald-700">Mendownload seluruh data jamaah dalam 1 tabel menyatu (tanpa pemisah KK) berisi No, Nama Panggilan, dan Nama Asli.</p>
+                                </button>
+
+                                <button
+                                    onClick={() => handleExportExcel('full')}
+                                    className="w-full text-left p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all group"
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="font-semibold text-slate-800 group-hover:text-slate-900 text-sm">Data Lengkap (Terkini)</span>
+                                        <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[11px] font-bold rounded-md">Detail</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">Mendownload seluruh kolom detail (Jenjang, Gender, Umur, Tgl Lahir, Status Nikah, Keaktifan).</p>
+                                </button>
                             </div>
                         </div>
                     </div>
