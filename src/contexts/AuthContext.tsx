@@ -1,42 +1,9 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { onAuthStateChanged, signOut as firebaseSignOut, sendPasswordResetEmail, type User } from "firebase/auth";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { onAuthStateChanged, signOut as firebaseSignOut, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/client";
-
-export interface UserProfile {
-    uid: string;
-    email: string;
-    status: number; // 0=Super Admin, 1=Admin, 2=4S Desa, 3=4S Kelompok, 4=PM Desa, 5=PM Kelompok
-    kelompok: string;
-    isActive: boolean;
-    createdAt?: any;
-}
-export const STATUS_LABELS: Record<number, string> = {
-    0: 'Super Admin',
-    1: 'Admin',
-    2: 'Pengurus Desa',
-    3: 'Pengurus Kelompok',
-    4: 'Pengurus Muda/i Desa',
-    5: 'Pengurus Muda/i Kelompok'
-};
-
-interface AuthContextType {
-    user: User | null;
-    profile: UserProfile | null;
-    loading: boolean;
-    signOut: () => Promise<void>;
-    resetPassword: (email: string) => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType>({
-    user: null,
-    profile: null,
-    loading: true,
-    signOut: async () => { },
-    resetPassword: async () => { },
-});
-
-export const useAuth = () => useContext(AuthContext);
+import { AuthContext } from './auth';
+import type { UserProfile } from '../types/auth';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -64,7 +31,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     docRef,
                     (docSnap) => {
                         if (docSnap.exists()) {
-                            setProfile(docSnap.data() as UserProfile);
+                            const data = docSnap.data();
+                            setProfile({
+                                uid: currentUser.uid,
+                                email: typeof data.email === 'string'
+                                    ? data.email
+                                    : currentUser.email ?? '',
+                                status: Number(data.status),
+                                kelompok: typeof data.kelompok === 'string' ? data.kelompok : '',
+                                isActive: data.isActive === true,
+                                createdAt: data.createdAt,
+                            });
                         } else {
                             setProfile(null);
                         }
@@ -96,7 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         };
     }, []);
 
-    const signOut = async () => {
+    const signOut = useCallback(async () => {
         // ✅ Cancel snapshot immediately so no stale updates fire after logout
         if (snapshotUnsubRef.current) {
             snapshotUnsubRef.current();
@@ -105,14 +82,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
         setProfile(null);
         await firebaseSignOut(auth);
-    };
+    }, []);
 
-    const resetPassword = async (email: string) => {
+    const resetPassword = useCallback(async (email: string) => {
         await sendPasswordResetEmail(auth, email);
-    };
+    }, []);
+
+    const contextValue = useMemo(
+        () => ({ user, profile, loading, signOut, resetPassword }),
+        [user, profile, loading, signOut, resetPassword],
+    );
 
     return (
-        <AuthContext.Provider value={{ user, profile, loading, signOut, resetPassword }}>
+        <AuthContext.Provider value={contextValue}>
             {children}
         </AuthContext.Provider>
     );

@@ -5,11 +5,11 @@ import {
     CheckCircle2, User, ChevronDown
 } from 'lucide-react';
 import copy from 'copy-to-clipboard';
-import { type Familys, type Member } from '../types/Member';
+import { type Family, type Member } from '../types/Member';
 
 interface DashboardProps {
     members: Member[];
-    listFamily: Familys[];
+    listFamily: Family[];
     loading: boolean;
     selectedKelompok: string;
     setSelectedKelompok: (k: string) => void;

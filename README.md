@@ -13,7 +13,7 @@ Built with React, TypeScript, Vite, TailwindCSS, and powered by Firebase Firesto
 - **Premium UI & Theme**: A uniform, clean blue-themed UI with a modern split-layout design for authentication and improved user flow.
 
 ## Tech Stack
-- Frontend: React 18, Vite, TypeScript
+- Frontend: React 19, Vite, TypeScript
 - Styling: TailwindCSS
 - Icons: Lucide React
 - Backend & Database: Firebase (Authentication, Firestore)
@@ -79,3 +79,30 @@ The application expects the following collections in your Firebase Firestore:
 6. `attendance_logs`: Daily attendance records keyed by unique dates.
 
 > **Security Note**: Remember to configure your Firestore rules in production so that unauthorized users cannot arbitrarily delete or modify records.
+
+## Project Structure
+
+```text
+src/
+├── components/    # Reusable UI and feature views
+├── contexts/      # React providers and context hooks
+├── hooks/         # Reusable view-model hooks
+├── lib/           # Framework-agnostic cache, error, and storage helpers
+├── pages/         # Route-level entry points (loaded lazily)
+├── repositories/  # Firestore reads/writes and document normalization
+├── store/         # Zustand state, caching, invalidation, and request guards
+├── types/         # Shared domain contracts
+└── utils/         # Export, audit, and formatting utilities
+```
+
+Keep Firestore queries in `repositories`, server-state coordination in `store`, and rendering logic in `components`/`pages`. This separation keeps Firebase details out of the UI and makes domain logic easier to test.
+
+## Quality Checks
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Run all required checks with `npm run check` before opening a pull request.

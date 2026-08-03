@@ -1,5 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, orderBy, limit, getDocs, startAfter, where } from 'firebase/firestore';
+import {
+    collection,
+    query,
+    orderBy,
+    limit,
+    getDocs,
+    startAfter,
+    where,
+    type DocumentData,
+    type QueryDocumentSnapshot,
+} from 'firebase/firestore';
 import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
@@ -13,7 +23,7 @@ import {
 } from 'lucide-react';
 
 import type { AuditLogEntry } from '../utils/auditLogger';
-import { STATUS_LABELS } from '../contexts/AuthContext';
+import { STATUS_LABELS } from '../contexts/auth';
 
 dayjs.locale('id');
 
@@ -29,7 +39,7 @@ export default function AuditLog() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [lastVisible, setLastVisible] = useState<any>(null);
+    const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
 
     // Filters
     const [searchQuery, setSearchQuery] = useState('');
@@ -152,7 +162,7 @@ export default function AuditLog() {
                     })}
                 </div>
             );
-        } catch (e) {
+        } catch {
             return <div className="mt-2 text-xs text-slate-500">{changesStr}</div>;
         }
     };

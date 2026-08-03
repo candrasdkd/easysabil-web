@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { getErrorMessage } from '../lib/errors';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/client';
 import toast from 'react-hot-toast';
@@ -52,8 +53,8 @@ export default function RegisterPage() {
             });
             toast.success("Registrasi berhasil! Menunggu persetujuan admin.");
             navigate('/login');
-        } catch (error: any) {
-            toast.error(error.message || 'Gagal mendaftar');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Gagal mendaftar'));
         } finally {
             setLoading(false);
         }

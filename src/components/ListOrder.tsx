@@ -5,11 +5,11 @@ import {
     Search, Loader2, AlertCircle, TrendingUp, ShoppingBag, ShieldOff
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 
 import { useOrders, useOrderDropdowns } from "../hooks/useOrders";
 import { useOrderStats } from "../hooks/useOrderStats";
-import type { DataOrder, SelectedCategoryProps } from "../types/Order";
+import type { DataOrder, OrderFormData, SelectedCategoryProps } from "../types/Order";
 import { formatRupiah } from "../utils/formatters";
 
 // Sub-components
@@ -24,30 +24,9 @@ import OrderFilterModal from "./OrderFilterModal";
 
 
 
-const OrderListPage: React.FC = () => {
+const OrderListContent: React.FC = () => {
     const location = useLocation();
     const routeState = location.state as { selectedCategory?: SelectedCategoryProps } | undefined;
-    const { profile } = useAuth();
-
-    // Access control: Super Admin, Admin, atau Pengurus Kelompok 1
-    const hasAccess =
-        profile?.status === 0 ||
-        profile?.status === 1 ||
-        (profile?.status === 3 && profile?.kelompok === 'Kelompok 1');
-
-    if (!hasAccess) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-                <div className="text-center">
-                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <ShieldOff size={32} className="text-red-500" />
-                    </div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">Akses Dibatasi</h2>
-                    <p className="text-slate-500 text-sm">Halaman ini hanya dapat diakses oleh Super Admin, Admin, atau Pengurus Kelompok 1.</p>
-                </div>
-            </div>
-        );
-    }
 
     // --- Hooks ---
     const [searchQuery, setSearchQuery] = useState("");
@@ -80,10 +59,10 @@ const OrderListPage: React.FC = () => {
     const [memberSearch, setMemberSearch] = useState("");
     const memberRef = useRef<HTMLDivElement>(null);
 
-    const [dataUpload, setDataUpload] = useState({
+    const [dataUpload, setDataUpload] = useState<OrderFormData>({
         idCard: null as number | string | null,
         user: { label: "", value: "", id: "" },
-        category: { label: "", value: "", id: "", name: "", price: "" } as SelectedCategoryProps,
+        category: { label: "", value: "", id: "", name: "", price: "" },
         totalOrder: "",
         note: "",
         isPayment: false,
@@ -151,7 +130,7 @@ const OrderListPage: React.FC = () => {
                     id: String(order.id_category_order),
                     name: order.name_category,
                     price: String(order.unit_price)
-                } as SelectedCategoryProps,
+                },
                 totalOrder: String(order.total_order),
                 note: order.note || "",
                 isPayment: order.is_payment,
@@ -186,7 +165,7 @@ const OrderListPage: React.FC = () => {
 
         const body = {
             user_name: dataUpload.user.value,
-            user_id: dataUpload.user.id,
+            user_id: String(dataUpload.user.id),
             id_category_order: String(dataUpload.category.id),
             name_category: dataUpload.category.label,
             total_order: parseInt(dataUpload.totalOrder),
@@ -427,6 +406,29 @@ const OrderListPage: React.FC = () => {
                 onConfirm={handleDelete}
                 uploading={uploading}
             />
+        </div>
+    );
+};
+
+const OrderListPage: React.FC = () => {
+    const { profile } = useAuth();
+    const hasAccess = profile?.status === 0
+        || profile?.status === 1
+        || (profile?.status === 3 && profile.kelompok === 'Kelompok 1');
+
+    if (hasAccess) return <OrderListContent />;
+
+    return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+            <div className="text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ShieldOff size={32} className="text-red-500" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Akses Dibatasi</h2>
+                <p className="text-slate-500 text-sm">
+                    Halaman ini hanya dapat diakses oleh Super Admin, Admin, atau Pengurus Kelompok 1.
+                </p>
+            </div>
         </div>
     );
 };

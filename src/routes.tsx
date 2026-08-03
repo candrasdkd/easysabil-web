@@ -1,43 +1,57 @@
-import { useState } from 'react';
-import { Routes, Route, useLocation } from 'react-router';
-import DashboardPage from './pages/DashboardPage';
-import MemberListPage from './pages/MemberListPage';
-import MemberCreatePage from './pages/MemberCreatePage';
-import MemberEditPage from './pages/MemberEditPage';
-import MemberDetailPage from './pages/MemberDetailPage';
-import Sidebar from './components/Sidebar';
-import CategoryOrder from './components/CategoryOrder';
-import TabelSensusScreen from "./components/TableTotalSensus";
-import OrderListPage from './components/ListOrder';
-import MonthlyAttendance from './components/AttendanceLog';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import AuditLogPage from './pages/AuditLogPage';
+import { lazy, Suspense, useState } from 'react';
+import { Route, Routes, useLocation } from 'react-router';
 import ProtectedRoute from './components/ProtectedRoute';
-import AdminUsersPage from './pages/AdminUsersPage';
-import ProfilePage from './pages/ProfilePage';
-import FamiliesPage from './pages/FamiliesPage';
+import Sidebar from './components/Sidebar';
+import { readBooleanPreference, writePreference } from './lib/storage';
 
-const authPages = ['/login', '/register', '/lupa-password'];
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const FamiliesPage = lazy(() => import('./pages/FamiliesPage'));
+const MemberListPage = lazy(() => import('./pages/MemberListPage'));
+const MemberCreatePage = lazy(() => import('./pages/MemberCreatePage'));
+const MemberEditPage = lazy(() => import('./pages/MemberEditPage'));
+const MemberDetailPage = lazy(() => import('./pages/MemberDetailPage'));
+const CategoryOrdersPage = lazy(() => import('./pages/CategoryOrdersPage'));
+const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const CensusSummaryPage = lazy(() => import('./pages/CensusSummaryPage'));
+const AttendancePage = lazy(() => import('./pages/AttendancePage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+
+const AUTH_PATHS = new Set(['/login', '/register', '/lupa-password']);
+const SIDEBAR_STORAGE_KEY = 'sidebarCollapsed';
+
+function RouteLoading() {
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+        </div>
+    );
+}
+
+function ProtectedPage({ children }: { children: React.ReactNode }) {
+    return <ProtectedRoute>{children}</ProtectedRoute>;
+}
+
+function AdminPage({ children }: { children: React.ReactNode }) {
+    return <ProtectedRoute adminOnly>{children}</ProtectedRoute>;
+}
 
 export default function AppRoutes() {
     const location = useLocation();
-    const isAuthPage = authPages.includes(location.pathname);
-
-    const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-        try {
-            return localStorage.getItem('sidebarCollapsed') === 'true';
-        } catch {
-            return false;
-        }
-    });
+    const isAuthPage = AUTH_PATHS.has(location.pathname);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+        readBooleanPreference(SIDEBAR_STORAGE_KEY),
+    );
 
     const handleToggleSidebar = () => {
-        setSidebarCollapsed(prev => {
-            const next = !prev;
-            try { localStorage.setItem('sidebarCollapsed', String(next)); } catch { }
-            return next;
+        setSidebarCollapsed((currentValue) => {
+            const nextValue = !currentValue;
+            writePreference(SIDEBAR_STORAGE_KEY, String(nextValue));
+            return nextValue;
         });
     };
 
@@ -45,44 +59,35 @@ export default function AppRoutes() {
         <div className="min-h-screen bg-slate-50">
             <Sidebar collapsed={sidebarCollapsed} onToggle={handleToggleSidebar} />
 
-            {/* Main content: on desktop offset by sidebar width, on mobile no left margin */}
             <main
-                className={`transition-all duration-300 ease-in-out ${isAuthPage ? '' : sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
-                    }`}
+                className={`transition-all duration-300 ease-in-out ${
+                    isAuthPage ? '' : sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
+                }`}
             >
-                {/* Mobile-only top padding for the fixed topbar */}
                 {!isAuthPage && <div className="h-14 md:hidden" />}
 
-                <Routes>
-                    {/* Public Routes */}
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/register" element={<RegisterPage />} />
-                    <Route path="/lupa-password" element={<ForgotPasswordPage />} />
+                <Suspense fallback={<RouteLoading />}>
+                    <Routes>
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="/register" element={<RegisterPage />} />
+                        <Route path="/lupa-password" element={<ForgotPasswordPage />} />
 
-                    {/* Protected Admin/Super Admin Route */}
-                    <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsersPage /></ProtectedRoute>} />
-                    <Route
-                        path="/audit-log"
-                        element={
-                            <ProtectedRoute adminOnly>
-                                <AuditLogPage />
-                            </ProtectedRoute>
-                        }
-                    />
+                        <Route path="/admin/users" element={<AdminPage><AdminUsersPage /></AdminPage>} />
+                        <Route path="/audit-log" element={<AdminPage><AuditLogPage /></AdminPage>} />
 
-                    {/* Protected Routes */}
-                    <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-                    <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-                    <Route path="/families" element={<ProtectedRoute><FamiliesPage /></ProtectedRoute>} />
-                    <Route path="/members" element={<ProtectedRoute><MemberListPage /></ProtectedRoute>} />
-                    <Route path="/members/new" element={<ProtectedRoute><MemberCreatePage /></ProtectedRoute>} />
-                    <Route path="/members/:id/edit" element={<ProtectedRoute><MemberEditPage /></ProtectedRoute>} />
-                    <Route path="/members/:id" element={<ProtectedRoute><MemberDetailPage /></ProtectedRoute>} />
-                    <Route path="/category-orders" element={<ProtectedRoute><CategoryOrder /></ProtectedRoute>} />
-                    <Route path="/category-orders/list" element={<ProtectedRoute><OrderListPage /></ProtectedRoute>} />
-                    <Route path="/rekap" element={<ProtectedRoute><TabelSensusScreen /></ProtectedRoute>} />
-                    <Route path='/attendance' element={<ProtectedRoute><MonthlyAttendance /></ProtectedRoute>} />
-                </Routes>
+                        <Route path="/" element={<ProtectedPage><DashboardPage /></ProtectedPage>} />
+                        <Route path="/profile" element={<ProtectedPage><ProfilePage /></ProtectedPage>} />
+                        <Route path="/families" element={<ProtectedPage><FamiliesPage /></ProtectedPage>} />
+                        <Route path="/members" element={<ProtectedPage><MemberListPage /></ProtectedPage>} />
+                        <Route path="/members/new" element={<ProtectedPage><MemberCreatePage /></ProtectedPage>} />
+                        <Route path="/members/:id/edit" element={<ProtectedPage><MemberEditPage /></ProtectedPage>} />
+                        <Route path="/members/:id" element={<ProtectedPage><MemberDetailPage /></ProtectedPage>} />
+                        <Route path="/category-orders" element={<ProtectedPage><CategoryOrdersPage /></ProtectedPage>} />
+                        <Route path="/category-orders/list" element={<ProtectedPage><OrdersPage /></ProtectedPage>} />
+                        <Route path="/rekap" element={<ProtectedPage><CensusSummaryPage /></ProtectedPage>} />
+                        <Route path="/attendance" element={<ProtectedPage><AttendancePage /></ProtectedPage>} />
+                    </Routes>
+                </Suspense>
             </main>
         </div>
     );

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
 import { Globe, Mail, ArrowRight, ArrowLeft, Send } from 'lucide-react';
+import { getErrorCode, getErrorMessage } from '../lib/errors';
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState('');
@@ -17,12 +18,12 @@ export default function ForgotPasswordPage() {
             await resetPassword(email);
             setSent(true);
             toast.success('Email reset password telah dikirim!');
-        } catch (error: any) {
-            const code = error.code;
+        } catch (error: unknown) {
+            const code = getErrorCode(error);
             if (code === 'auth/user-not-found' || code === 'auth/invalid-email') {
                 toast.error('Email tidak ditemukan atau tidak valid.');
             } else {
-                toast.error('Gagal mengirim email: ' + (error.message || 'Terjadi kesalahan'));
+                toast.error(`Gagal mengirim email: ${getErrorMessage(error)}`);
             }
         } finally {
             setLoading(false);

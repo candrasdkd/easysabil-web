@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase/client';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, LogIn, Globe, ArrowRight } from 'lucide-react';
+import { getErrorCode, getErrorMessage } from '../lib/errors';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -19,12 +20,12 @@ export default function LoginPage() {
             await signInWithEmailAndPassword(auth, email, password);
             toast.success("Login berhasil!");
             navigate('/');
-        } catch (error: any) {
-            const code = error.code;
+        } catch (error: unknown) {
+            const code = getErrorCode(error);
             if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
                 toast.error("Email atau password salah.");
             } else {
-                toast.error("Gagal login: " + (error.message || 'Terjadi kesalahan'));
+                toast.error(`Gagal login: ${getErrorMessage(error)}`);
             }
         } finally {
             setLoading(false);

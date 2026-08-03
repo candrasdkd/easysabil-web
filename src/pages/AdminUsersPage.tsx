@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import toast from 'react-hot-toast';
-import { type UserProfile } from '../contexts/AuthContext';
-import { useAuth, STATUS_LABELS } from '../contexts/AuthContext';
+import { type UserProfile, useAuth, STATUS_LABELS } from '../contexts/auth';
 import { ChevronDown } from 'lucide-react';
 
 export default function AdminUsersPage() {
@@ -15,7 +14,7 @@ export default function AdminUsersPage() {
     const isSuperAdmin = currentUserProfile?.status === 0;
     const isAdmin = currentUserProfile?.status === 1;
 
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         setLoading(true);
         try {
             const querySnapshot = await getDocs(collection(db, 'users'));
@@ -39,13 +38,13 @@ export default function AdminUsersPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentUser?.uid, currentUserProfile?.kelompok, isAdmin, isSuperAdmin]);
 
     useEffect(() => {
         if (currentUser?.uid) {
             fetchUsers();
         }
-    }, [currentUser?.uid, currentUserProfile?.status]);
+    }, [currentUser?.uid, fetchUsers]);
 
     const handleToggleActive = async (uid: string, currentIsActive: boolean) => {
         setTogglingUids(prev => new Set(prev).add(uid));

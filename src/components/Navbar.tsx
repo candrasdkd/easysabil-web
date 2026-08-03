@@ -13,7 +13,7 @@ import {
     ShieldCheck,
     CalendarDays
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 
 const baseNavItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },

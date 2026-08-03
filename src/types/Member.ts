@@ -43,7 +43,7 @@ export interface MemberFormProps {
     date: Dayjs | null;
     setDate: (date: Dayjs | null) => void;
     loading: boolean;
-    keluargaOptions: Familys[];
+    keluargaOptions: Family[];
     uploading: boolean;
     formState: MemberFormState;
     onFieldChange: (
@@ -55,17 +55,8 @@ export interface MemberFormProps {
     submitButtonLabel: string;
     backButtonPath?: string;
 }
-export interface Familys {
+export interface Family {
     id: string;
     name: string;
     kelompok: string;
-}
-
-export function getMembersStore(): Member[] {
-    const stringifiedEmployees = localStorage.getItem('members-store');
-    return stringifiedEmployees ? JSON.parse(stringifiedEmployees) : [];
-}
-
-export function setMembersStore(members: Member[]) {
-    return localStorage.setItem('members-store', JSON.stringify(members));
 }

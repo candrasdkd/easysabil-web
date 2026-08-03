@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { useParams } from 'react-router';
@@ -24,7 +24,8 @@ import {
     Briefcase,
     BookOpen
 } from 'lucide-react';
-import { type Familys } from '../types/Member';
+import { type Family } from '../types/Member';
+import { getErrorMessage } from '../lib/errors';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
@@ -51,7 +52,7 @@ export default function MemberEdit() {
     const [isLoadingDetail, setIsLoadingDetail] = useState(true);
     const { profile } = useAuth();
 
-    const [keluargaOptions, setKeluargaOptions] = useState<Familys[]>([]);
+    const [keluargaOptions, setKeluargaOptions] = useState<Family[]>([]);
     const [loadingKeluarga, setLoadingKeluarga] = useState(false);
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [familySearch, setFamilySearch] = useState('');
@@ -80,7 +81,7 @@ export default function MemberEdit() {
     };
 
     const [formValues, setFormValues] = useState(INITIAL_FORM_VALUES);
-    const [originalData, setOriginalData] = useState<any>(null);
+    const [originalData, setOriginalData] = useState<Record<string, unknown> | null>(null);
 
     const filteredKeluarga = keluargaOptions.filter(k =>
         k.name.toLowerCase().includes(familySearch.toLowerCase())
@@ -104,7 +105,7 @@ export default function MemberEdit() {
             }
             const querySnapshot = await getDocs(q);
             const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setKeluargaOptions(data as any as Familys[]);
+            setKeluargaOptions(data as Family[]);
         } catch (error) {
             console.error("Error fetching families:", error);
         } finally {
@@ -212,9 +213,22 @@ export default function MemberEdit() {
     // --- HANDLERS ---
 
 
+    const updateFormValue = (name: string, value: string | number | boolean | null) => {
+        setFormValues(prev => {
+            const newState = { ...prev, [name]: value };
+            if (name === 'date_of_birth') {
+                newState.age = typeof value === 'string' && value ? formatAge(value) : '-';
+            }
+            if (name === 'marriage_status' && value === 'Menikah') {
+                newState.education = 'Dewasa';
+            }
+            return newState;
+        });
+    };
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
-        let finalValue: any = value;
+        let finalValue: string | number | boolean | null = value;
 
         if (type === 'checkbox') {
             finalValue = (e.target as HTMLInputElement).checked;
@@ -224,19 +238,10 @@ export default function MemberEdit() {
             finalValue = value === '' ? null : parseInt(value);
         }
 
-        setFormValues(prev => {
-            const newState = { ...prev, [name]: finalValue };
-            if (name === 'date_of_birth') {
-                newState.age = value ? formatAge(value) : '-';
-            }
-            if (name === 'marriage_status' && value === 'Menikah') {
-                newState.education = 'Dewasa';
-            }
-            return newState;
-        });
+        updateFormValue(name, finalValue);
     };
 
-    const handleSelectFamily = (family: Familys) => {
+    const handleSelectFamily = (family: Family) => {
         setFormValues(prev => ({ ...prev, family_id: String(family.id), family_name: family.name }));
         setFamilySearch(family.name);
         setIsFamilyDropdownOpen(false);
@@ -312,10 +317,9 @@ export default function MemberEdit() {
             }
 
             // Hitung perubahan (diff)
-            const changes: Record<string, { old: any, new: any }> = {};
+            const changes: Record<string, { old: unknown, new: unknown }> = {};
             if (originalData) {
-                Object.keys(body).forEach(key => {
-                    const newVal = (body as any)[key];
+                Object.entries(body).forEach(([key, newVal]) => {
                     const oldVal = originalData[key];
 
                     // Simple comparison
@@ -341,9 +345,9 @@ export default function MemberEdit() {
             toast.success('Data berhasil diperbarui', { id: toastId });
             window.history.back();
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             // 7. Error Toast Update
-            toast.error(`Gagal update: ${error.message}`, { id: toastId });
+            toast.error(`Gagal update: ${getErrorMessage(error)}`, { id: toastId });
         } finally {
             setIsSubmitting(false);
         }
@@ -511,7 +515,7 @@ export default function MemberEdit() {
                                     <Label required>Tanggal Lahir</Label>
                                     <CustomDatePicker
                                         value={formValues.date_of_birth}
-                                        onChange={(val: string) => handleChange({ target: { name: 'date_of_birth', value: val, type: 'text' } } as any)}
+                                        onChange={(value) => updateFormValue('date_of_birth', value)}
                                     />
                                 </div>
                             )}

@@ -1,5 +1,16 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { collection, query, where, getDocs, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    doc,
+    setDoc,
+    getDoc,
+    serverTimestamp,
+    type FieldValue,
+    type Timestamp,
+} from 'firebase/firestore';
 import { db } from '../firebase/client';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
@@ -13,7 +24,7 @@ import {
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useRoleMembersStore } from '../store/membersStore';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import { logAudit } from '../utils/auditLogger';
 import { getKelompokSlug } from '../constants/mudaMudiOptions';
 import CustomDatePicker from './CustomDatePicker';
@@ -31,10 +42,23 @@ export interface AttendanceSession {
     kelompok: string;
     day_label: string;
     records: Record<string, SessionRecord>;
-    created_at?: any;
+    created_at?: Timestamp;
     created_by?: string;
-    updated_at?: any;
+    updated_at?: Timestamp;
     updated_by?: string;
+}
+
+type SortMode = 'order' | 'time_desc' | 'time_asc' | 'name';
+
+interface AttendanceSessionPayload {
+    date: string;
+    kelompok: string;
+    day_label: string;
+    records: Record<string, SessionRecord>;
+    updated_at: FieldValue;
+    updated_by: string;
+    created_at?: FieldValue;
+    created_by?: string;
 }
 
 export default function AttendanceLog() {
@@ -55,7 +79,7 @@ export default function AttendanceLog() {
     const [recordsMap, setRecordsMap] = useState<Record<string, 'H' | 'I' | 'S' | 'A'>>({});
     const [notesMap, setNotesMap] = useState<Record<string, string>>({});
     const [timesMap, setTimesMap] = useState<Record<string, string>>({});
-    const [sortBy, setSortBy] = useState<'order' | 'time_desc' | 'time_asc' | 'name'>('order');
+    const [sortBy, setSortBy] = useState<SortMode>('order');
     const [isSessionLoading, setIsSessionLoading] = useState<boolean>(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [sessionDocExists, setSessionDocExists] = useState<boolean>(false);
@@ -178,7 +202,7 @@ export default function AttendanceLog() {
                 }
             }
         }
-    }, [members, profile]);
+    }, [members, profile, selectedKelompok]);
 
     // --- REALTIME AUTO SAVE FUNCTION ---
     const autoSaveSession = useCallback(async (
@@ -208,7 +232,7 @@ export default function AttendanceLog() {
                 }
             });
 
-            const sessionPayload: any = {
+            const sessionPayload: AttendanceSessionPayload = {
                 date: inputDate,
                 kelompok: selectedKelompok,
                 day_label: dayLabel,
@@ -963,7 +987,7 @@ export default function AttendanceLog() {
                                     <span className="text-slate-400 hidden sm:inline">Urutkan:</span>
                                     <select
                                         value={sortBy}
-                                        onChange={(e) => setSortBy(e.target.value as any)}
+                                        onChange={(e) => setSortBy(e.target.value as SortMode)}
                                         className="bg-transparent font-bold outline-none cursor-pointer text-slate-800 text-xs"
                                     >
                                         <option value="order">Urutan No</option>

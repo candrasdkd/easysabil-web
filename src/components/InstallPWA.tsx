@@ -36,7 +36,9 @@ export default function InstallPWA() {
         window.addEventListener('beforeinstallprompt', handler);
 
         // Check if already installed
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean };
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+            || navigatorWithStandalone.standalone === true;
         if (isStandalone) {
             setIsVisible(false);
         }

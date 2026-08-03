@@ -1,11 +1,8 @@
-import { forwardRef, useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import dayjs from 'dayjs';
 import { type Member } from '../types/Member';
 import { useMembersStore } from '../store/membersStore';
-
-// --- Interfaces ---
-interface TableProps { }
 
 interface SensusMetrics {
     balita_l: Member[]; balita_p: Member[];
@@ -18,16 +15,18 @@ interface SensusMetrics {
     duda: Member[]; janda: Member[];
 }
 
-type GroupedCategories = {
-    balita_l: any[]; balita_p: any[];
-    paud_l: any[]; paud_p: any[];
-    caberawit_l: any[]; caberawit_p: any[];
-    praremaja_l: any[]; praremaja_p: any[];
-    remaja_l: any[]; remaja_p: any[];
-    pranikah_l: any[]; pranikah_p: any[];
-    menikah_l: any[]; menikah_p: any[];
-    duda: any[]; janda: any[];
-};
+interface DesaTotals {
+    totalBalita_lDesa: number; totalBalita_pDesa: number;
+    totalPaud_lDesa: number; totalPaud_pDesa: number;
+    totalCaberawit_lDesa: number; totalCaberawit_pDesa: number;
+    totalPraremaja_lDesa: number; totalPraremaja_pDesa: number;
+    totalRemaja_lDesa: number; totalRemaja_pDesa: number;
+    totalPraNikah_lDesa: number; totalPraNikah_pDesa: number;
+    totalMenikah_lDesa: number; totalMenikah_pDesa: number;
+    totalDudaDesa: number; totalJandaDesa: number;
+    totalKKDesa: number; totalDuafaJiwaDesa: number;
+    totalBinaanLDesa: number; totalBinaanPDesa: number;
+}
 
 
 
@@ -42,6 +41,11 @@ const createEmptyMetrics = (): SensusMetrics => ({
     menikah_l: [], menikah_p: [],
     duda: [], janda: []
 });
+
+const addByGender = (member: Member, isMale: boolean, maleMembers: Member[], femaleMembers: Member[]) => {
+    if (isMale) maleMembers.push(member);
+    else femaleMembers.push(member);
+};
 
 const processSensusData = (members: Member[]) => {
     const createEmptyStats = () => ({
@@ -72,37 +76,40 @@ const processSensusData = (members: Member[]) => {
         const g = groups[groupIndex].metrics;
         const s = groups[groupIndex].stats;
 
-        const gender = (m.gender || '').toLowerCase().trim();
-        const isLaki = gender === 'laki - laki' || gender === 'Laki - Laki';
+        const gender = (m.gender || '').toLowerCase().trim().replace(/\s+/g, ' ');
+        const isLaki = gender === 'laki - laki' || gender === 'laki-laki';
 
         if (!m.is_educate) {
             const status = (m.marriage_status || '').toLowerCase().trim();
             const level = (m.level || '').toLowerCase().trim();
 
             if (status === 'menikah') {
-                isLaki ? g.menikah_l.push(m) : g.menikah_p.push(m);
+                addByGender(m, isLaki, g.menikah_l, g.menikah_p);
             } else if (status === 'duda') {
                 g.duda.push(m);
             } else if (status === 'janda') {
                 g.janda.push(m);
             } else {
                 if (level.includes('batita') || level.includes('balita')) {
-                    isLaki ? g.balita_l.push(m) : g.balita_p.push(m);
+                    addByGender(m, isLaki, g.balita_l, g.balita_p);
                 } else if (level.includes('paud')) {
-                    isLaki ? g.paud_l.push(m) : g.paud_p.push(m);
+                    addByGender(m, isLaki, g.paud_l, g.paud_p);
                 } else if (level.includes('cabe rawit')) {
-                    isLaki ? g.caberawit_l.push(m) : g.caberawit_p.push(m);
+                    addByGender(m, isLaki, g.caberawit_l, g.caberawit_p);
                 } else if (level.includes('pra remaja')) {
-                    isLaki ? g.praremaja_l.push(m) : g.praremaja_p.push(m);
+                    addByGender(m, isLaki, g.praremaja_l, g.praremaja_p);
                 } else if (level.includes('remaja')) {
-                    isLaki ? g.remaja_l.push(m) : g.remaja_p.push(m);
+                    addByGender(m, isLaki, g.remaja_l, g.remaja_p);
                 } else if (level.includes('pra nikah') || (level.includes('dewasa') && status === 'belum menikah')) {
-                    isLaki ? g.pranikah_l.push(m) : g.pranikah_p.push(m);
+                    addByGender(m, isLaki, g.pranikah_l, g.pranikah_p);
                 }
             }
         }
 
-        if (m.is_educate) isLaki ? s.jumlahBinaan.l++ : s.jumlahBinaan.p++;
+        if (m.is_educate) {
+            if (isLaki) s.jumlahBinaan.l += 1;
+            else s.jumlahBinaan.p += 1;
+        }
         if (m.is_duafa) s.jumlahDuafa.jiwa++;
 
         if (m.family_id && !m.family_name?.startsWith('Rantau')) {
@@ -115,7 +122,7 @@ const processSensusData = (members: Member[]) => {
     });
 
     // Compute totals for each group and for the whole desa
-    const desaTotals: any = {
+    const desaTotals: DesaTotals = {
         totalBalita_lDesa: 0, totalBalita_pDesa: 0,
         totalPaud_lDesa: 0, totalPaud_pDesa: 0,
         totalCaberawit_lDesa: 0, totalCaberawit_pDesa: 0,
@@ -161,7 +168,7 @@ const processSensusData = (members: Member[]) => {
 };
 
 // --- KOMPONEN UTAMA ---
-const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_props, _ref) => {
+export default function TabelSensus() {
     const printRef = useRef<HTMLDivElement>(null);
     const { members, loading, isInitialized, fetchMembers } = useMembersStore();
 
@@ -261,7 +268,7 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_props, _ref) => {
     );
 
     // helper to read value for a group from groups
-    const readGroupValue = (groupIndex: number, category: keyof GroupedCategories) => {
+    const readGroupValue = (groupIndex: number, category: keyof SensusMetrics) => {
         const group = groups[groupIndex];
         if (!group) return 0;
         return group.metrics[category]?.length ?? 0;
@@ -423,6 +430,4 @@ const TabelSensus = forwardRef<HTMLDivElement, TableProps>((_props, _ref) => {
             </div>
         </div>
     );
-});
-
-export default TabelSensus;
+}

@@ -1,18 +1,18 @@
 import { create } from 'zustand';
-import { collection, query, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase/client';
+import { CACHE_TTL, isCacheFresh } from '../lib/cache';
+import { getErrorMessage } from '../lib/errors';
+import {
+    getOrderCategories,
+    removeOrderCategory,
+    saveOrderCategory,
+} from '../repositories/categoryOrdersRepository';
+import type { OrderCategory, OrderCategoryInput } from '../types/Order';
 
-// Cache TTL: 10 menit
-const CACHE_TTL_MS = 10 * 60 * 1000;
+export type { OrderCategory } from '../types/Order';
 
-const isCacheValid = (lastFetchedAt: number | null) =>
-    lastFetchedAt !== null && Date.now() - lastFetchedAt < CACHE_TTL_MS;
-
-export interface OrderCategory {
-    id: string;
-    name: string;
-    price: number;
-    year: number;
+interface MutationResult {
+    success: boolean;
+    error?: string;
 }
 
 interface CategoryOrdersState {
@@ -22,10 +22,12 @@ interface CategoryOrdersState {
     lastFetchedAt: number | null;
     error: string | null;
     fetchCategories: () => Promise<void>;
-    saveCategory: (data: { name: string; price: number; year: number }, id?: string) => Promise<{ success: boolean; error?: string }>;
-    deleteCategory: (id: string) => Promise<{ success: boolean; error?: string }>;
+    saveCategory: (data: OrderCategoryInput, id?: string) => Promise<MutationResult>;
+    deleteCategory: (id: string) => Promise<MutationResult>;
     invalidate: () => void;
 }
+
+let activeCategoriesRequest = 0;
 
 export const useCategoryOrdersStore = create<CategoryOrdersState>((set, get) => ({
     categories: [],
@@ -36,51 +38,50 @@ export const useCategoryOrdersStore = create<CategoryOrdersState>((set, get) => 
 
     fetchCategories: async () => {
         const { loading, lastFetchedAt } = get();
-        if (loading || isCacheValid(lastFetchedAt)) return;
+        if (loading || isCacheFresh(lastFetchedAt, CACHE_TTL.standard)) return;
 
+        const requestId = ++activeCategoriesRequest;
         set({ loading: true, error: null });
         try {
-            const q = query(collection(db, 'category_orders'), orderBy('year', 'desc'));
-            const snap = await getDocs(q);
-            const data: OrderCategory[] = snap.docs.map(doc => {
-                const r = doc.data();
-                return {
-                    id: doc.id,
-                    name: r.name,
-                    year: Number(r.year),
-                    price: r.price === null ? 0 : Number(r.price),
-                };
+            const categories = await getOrderCategories();
+            if (requestId !== activeCategoriesRequest) return;
+            set({
+                categories,
+                lastFetchedAt: Date.now(),
+                loading: false,
+                isInitialized: true,
             });
-            set({ categories: data, lastFetchedAt: Date.now(), loading: false, isInitialized: true });
-        } catch (err: any) {
-            set({ loading: false, error: err.message, categories: [] });
+        } catch (error) {
+            if (requestId !== activeCategoriesRequest) return;
+            set({
+                loading: false,
+                error: getErrorMessage(error, 'Gagal mengambil kategori'),
+            });
         }
     },
 
     saveCategory: async (data, id) => {
         try {
-            if (id) {
-                await updateDoc(doc(db, 'category_orders', id), data);
-            } else {
-                await addDoc(collection(db, 'category_orders'), data);
-            }
-            // Invalidate agar re-fetch setelah mutasi
-            set({ lastFetchedAt: null });
+            await saveOrderCategory(data, id);
+            set({ lastFetchedAt: null, isInitialized: false });
             return { success: true };
-        } catch (err: any) {
-            return { success: false, error: err.message };
+        } catch (error) {
+            return { success: false, error: getErrorMessage(error, 'Gagal menyimpan kategori') };
         }
     },
 
     deleteCategory: async (id) => {
         try {
-            await deleteDoc(doc(db, 'category_orders', id));
-            set({ lastFetchedAt: null });
+            await removeOrderCategory(id);
+            set({ lastFetchedAt: null, isInitialized: false });
             return { success: true };
-        } catch (err: any) {
-            return { success: false, error: err.message };
+        } catch (error) {
+            return { success: false, error: getErrorMessage(error, 'Gagal menghapus kategori') };
         }
     },
 
-    invalidate: () => set({ lastFetchedAt: null, isInitialized: false }),
+    invalidate: () => {
+        activeCategoriesRequest += 1;
+        set({ lastFetchedAt: null, isInitialized: false, loading: false });
+    },
 }));

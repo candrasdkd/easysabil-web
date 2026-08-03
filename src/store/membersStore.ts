@@ -1,73 +1,70 @@
 import { create } from 'zustand';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/client';
-import { type Member } from '../types/Member';
+import { CACHE_TTL, isCacheFresh } from '../lib/cache';
+import { getErrorMessage } from '../lib/errors';
+import {
+    getActiveMembers,
+    getMembersByRole,
+    type RoleProfile,
+} from '../repositories/membersRepository';
+import type { Member } from '../types/Member';
 
-// Cache TTL: 5 menit
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-const isCacheValid = (lastFetchedAt: number | null) =>
-    lastFetchedAt !== null && Date.now() - lastFetchedAt < CACHE_TTL_MS;
-
-// ─────────────────────────────────────────────────────────
-// 1. ALL ACTIVE MEMBERS STORE
-//    Dipakai oleh: TableTotalSensus, AttendanceLog
-// ─────────────────────────────────────────────────────────
-interface AllMembersState {
-    members: Member[];
+interface FetchState {
     loading: boolean;
-    isInitialized: boolean; // true setelah fetch pertama selesai
+    isInitialized: boolean;
     lastFetchedAt: number | null;
+    error: string | null;
+}
+
+interface AllMembersState extends FetchState {
+    members: Member[];
     fetchMembers: () => Promise<void>;
     invalidate: () => void;
 }
+
+let activeMembersRequest = 0;
 
 export const useMembersStore = create<AllMembersState>((set, get) => ({
     members: [],
     loading: false,
     isInitialized: false,
     lastFetchedAt: null,
+    error: null,
 
     fetchMembers: async () => {
         const { loading, lastFetchedAt } = get();
-        if (loading || isCacheValid(lastFetchedAt)) return;
+        if (loading || isCacheFresh(lastFetchedAt, CACHE_TTL.short)) return;
 
-        set({ loading: true });
+        const requestId = ++activeMembersRequest;
+        set({ loading: true, error: null });
         try {
-            const q = query(collection(db, 'sensus'), where('is_active', '==', true));
-            const snap = await getDocs(q);
-            const data = snap.docs.map(doc => ({ uuid: doc.id, ...doc.data() })) as Member[];
-            set({ members: data, lastFetchedAt: Date.now(), loading: false, isInitialized: true });
-        } catch (err) {
-            console.error('Gagal ambil data members:', err);
-            set({ loading: false });
+            const members = await getActiveMembers();
+            if (requestId !== activeMembersRequest) return;
+            set({
+                members,
+                lastFetchedAt: Date.now(),
+                loading: false,
+                isInitialized: true,
+            });
+        } catch (error) {
+            if (requestId !== activeMembersRequest) return;
+            set({ loading: false, error: getErrorMessage(error, 'Gagal mengambil data anggota') });
         }
     },
 
-    invalidate: () => set({ lastFetchedAt: null, loading: false }),
+    invalidate: () => {
+        activeMembersRequest += 1;
+        set({ lastFetchedAt: null, isInitialized: false, loading: false });
+    },
 }));
 
-// ─────────────────────────────────────────────────────────
-// 2. ROLE-BASED MEMBERS STORE
-//    Dipakai oleh: DashboardPage, MemberListPage
-//    Data di-filter sesuai role user yang login
-// ─────────────────────────────────────────────────────────
-const MUDA_LEVELS = ['Pra Nikah', 'Pra Remaja', 'Remaja'];
-
-interface RoleProfile {
-    status: number;
-    kelompok?: string;
-}
-
-interface RoleMembersState {
+interface RoleMembersState extends FetchState {
     members: Member[];
-    loading: boolean;
-    isInitialized: boolean; // true setelah fetch pertama selesai
-    lastFetchedAt: number | null;
     lastProfileKey: string | null;
     fetchByRole: (profile: RoleProfile) => Promise<void>;
     invalidate: () => void;
 }
+
+let activeRoleMembersRequest = 0;
 
 export const useRoleMembersStore = create<RoleMembersState>((set, get) => ({
     members: [],
@@ -75,78 +72,35 @@ export const useRoleMembersStore = create<RoleMembersState>((set, get) => ({
     isInitialized: false,
     lastFetchedAt: null,
     lastProfileKey: null,
+    error: null,
 
-    fetchByRole: async (profile: RoleProfile) => {
-        const { loading, lastFetchedAt, lastProfileKey } = get();
+    fetchByRole: async (profile) => {
         const profileKey = `${profile.status}:${profile.kelompok ?? ''}`;
+        const { loading, lastFetchedAt, lastProfileKey } = get();
+        const cacheIsFresh = isCacheFresh(lastFetchedAt, CACHE_TTL.short)
+            && lastProfileKey === profileKey;
 
-        const cacheOk = isCacheValid(lastFetchedAt) && lastProfileKey === profileKey;
-        if (loading || cacheOk) return;
+        if (cacheIsFresh || (loading && lastProfileKey === profileKey)) return;
 
-        set({ loading: true, lastProfileKey: profileKey });
+        const requestId = ++activeRoleMembersRequest;
+        set({ loading: true, lastProfileKey: profileKey, error: null });
         try {
-            const { status, kelompok } = profile;
-            let allMembers: Member[] = [];
-
-            if (status === 0 || status === 1 || status === 2) {
-                const snap = await getDocs(
-                    query(collection(db, 'sensus'), orderBy('name', 'asc'))
-                );
-                allMembers = snap.docs.map(doc => ({ uuid: doc.id, ...doc.data() })) as Member[];
-
-            } else if (status === 3) {
-                const snap = await getDocs(
-                    query(collection(db, 'sensus'),
-                        where('kelompok', '==', kelompok),
-                        orderBy('name', 'asc'))
-                );
-                allMembers = snap.docs.map(doc => ({ uuid: doc.id, ...doc.data() })) as Member[];
-
-            } else if (status === 4) {
-                const snap = await getDocs(
-                    query(collection(db, 'sensus'), orderBy('name', 'asc'))
-                );
-                const all = snap.docs.map(doc => ({ uuid: doc.id, ...doc.data() })) as Member[];
-                allMembers = all.filter(m => MUDA_LEVELS.includes(m.level));
-
-            } else if (status === 5) {
-                const snap = await getDocs(
-                    query(collection(db, 'sensus'),
-                        where('kelompok', '==', kelompok),
-                        orderBy('name', 'asc'))
-                );
-                const byKelompok = snap.docs.map(doc => ({ uuid: doc.id, ...doc.data() })) as Member[];
-                allMembers = byKelompok.filter(m => MUDA_LEVELS.includes(m.level));
-            }
-
-            if (status === 4 || status === 5) {
-                allMembers = await Promise.all(
-                    allMembers.map(async (m) => {
-                        if (m.occupation_status || m.sambung_ngaji_status) return m;
-                        try {
-                            const mmSnap = await getDoc(doc(db, 'sensus', m.uuid, 'muda_mudi_info', 'detail'));
-                            if (mmSnap.exists()) {
-                                const mmData = mmSnap.data();
-                                return {
-                                    ...m,
-                                    occupation_status: mmData.occupation_status || '',
-                                    sambung_ngaji_status: mmData.sambung_ngaji_status || '',
-                                };
-                            }
-                        } catch (err) {
-                            console.error(`Error fetching muda_mudi_info for ${m.uuid}:`, err);
-                        }
-                        return m;
-                    })
-                );
-            }
-
-            set({ members: allMembers, lastFetchedAt: Date.now(), loading: false, isInitialized: true });
-        } catch (err) {
-            console.error('Gagal ambil data members (role):', err);
-            set({ loading: false });
+            const members = await getMembersByRole(profile);
+            if (requestId !== activeRoleMembersRequest) return;
+            set({
+                members,
+                lastFetchedAt: Date.now(),
+                loading: false,
+                isInitialized: true,
+            });
+        } catch (error) {
+            if (requestId !== activeRoleMembersRequest) return;
+            set({ loading: false, error: getErrorMessage(error, 'Gagal mengambil data anggota') });
         }
     },
 
-    invalidate: () => set({ lastFetchedAt: null, isInitialized: false, loading: false }),
+    invalidate: () => {
+        activeRoleMembersRequest += 1;
+        set({ lastFetchedAt: null, isInitialized: false, loading: false });
+    },
 }));

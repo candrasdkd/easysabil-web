@@ -1,13 +1,13 @@
 import React from 'react';
 import { X, Search, ChevronDown, CheckCircle2 } from 'lucide-react';
-import type { DataDropdown } from '../types/Order';
+import type { DataDropdown, OrderFormData } from '../types/Order';
 
 interface OrderFormModalProps {
     isOpen: boolean;
     isUpdate: boolean;
     hideCategory?: boolean;
-    dataUpload: any;
-    setDataUpload: (data: any) => void;
+    dataUpload: OrderFormData;
+    setDataUpload: React.Dispatch<React.SetStateAction<OrderFormData>>;
     memberSearch: string;
     setMemberSearch: (val: string) => void;
     isMemberDropdownOpen: boolean;

@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { doc, deleteDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
 import {
     Search,
@@ -27,10 +27,11 @@ import {
     Share2
 } from 'lucide-react';
 
-import { type Member } from '../types/Member';
+import { type Family, type Member } from '../types/Member';
 import { useFamiliesStore } from '../store/familiesStore';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
+import { getErrorMessage } from '../lib/errors';
 
 dayjs.locale('id');
 
@@ -43,11 +44,11 @@ type Props = {
     refreshMembers: () => void;
 };
 
-type Family = {
-    id: number;
-    name: string;
-    kelompok: string;
-};
+type MemberStatusFilter = 'Aktif' | 'Tidak Aktif' | 'Semua';
+type EducateFilter = 'Semua' | 'Jamaah' | 'Binaan';
+type DuafaFilter = 'Semua' | 'Duafa' | 'Bukan Duafa';
+type ExcelCell = string | number | boolean | null | undefined;
+type ExcelRow = ExcelCell[];
 
 const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' | 'red' | 'gray' | 'blue' }) => {
     const colors = {
@@ -74,7 +75,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             if (!saved) return defaultValue;
             const parsed = JSON.parse(saved);
             return parsed[key] !== undefined ? parsed[key] : defaultValue;
-        } catch (e) {
+        } catch {
             return defaultValue;
         }
     };
@@ -88,7 +89,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [selectedGender, setSelectedGender] = useState<string[]>(() => getSavedState('selectedGender', []));
     const [selectedLevel, setSelectedLevel] = useState<string[]>(() => getSavedState('selectedLevel', []));
     const [selectedMarriageStatus, setSelectedMarriageStatus] = useState<string[]>(() => getSavedState('selectedMarriageStatus', []));
-    const [memberStatus, setMemberStatus] = useState<'Aktif' | 'Tidak Aktif' | 'Semua'>(() => getSavedState('memberStatus', 'Aktif'));
+    const [memberStatus, setMemberStatus] = useState<MemberStatusFilter>(() => getSavedState('memberStatus', 'Aktif'));
 
     // Family Filter
     const [selectedFamily, setSelectedFamily] = useState<string>(() => getSavedState('selectedFamily', ''));
@@ -98,14 +99,14 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [selectedKelompok, setSelectedKelompok] = useState<string>(() => getSavedState('selectedKelompok', ''));
 
     // Educate Filter
-    const [educateFilter, setEducateFilter] = useState<'Semua' | 'Jamaah' | 'Binaan'>(() => getSavedState('educateFilter', 'Semua'));
+    const [educateFilter, setEducateFilter] = useState<EducateFilter>(() => getSavedState('educateFilter', 'Semua'));
 
     // Duafa Filter
-    const [duafaFilter, setDuafaFilter] = useState<'Semua' | 'Duafa' | 'Bukan Duafa'>(() => getSavedState('duafaFilter', 'Semua'));
+    const [duafaFilter, setDuafaFilter] = useState<DuafaFilter>(() => getSavedState('duafaFilter', 'Semua'));
 
     // Data State: families dari store (ter-cache, tidak re-fetch tiap navigasi)
     const { families: familiesFromStore, fetchFamilies } = useFamiliesStore();
-    const listFamily = familiesFromStore as any as Family[];
+    const listFamily: Family[] = familiesFromStore;
     const loadingFamily = false;
 
     useEffect(() => {
@@ -160,7 +161,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const highlightMatch = (text: string | number | null, search: string) => {
         const source = String(text ?? '');
         if (!search) return source;
-        const regex = new RegExp(`(${search})`, 'gi');
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedSearch})`, 'gi');
         const parts = source.split(regex);
         return (
             <>
@@ -212,8 +214,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         }
 
         filtered.sort((a, b) => {
-            let aVal: any = a[sortConfig.key as keyof Member];
-            let bVal: any = b[sortConfig.key as keyof Member];
+            const sortKey = sortConfig.key === 'actions' ? 'order' : sortConfig.key;
+            let aVal: Member[keyof Member] = a[sortKey];
+            let bVal: Member[keyof Member] = b[sortKey];
 
             if (sortConfig.key === 'name') {
                 aVal = a.alias || a.name;
@@ -283,8 +286,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 toast.success('Data berhasil dihapus', { id: toastId });
                 refreshMembers();
             })
-            .catch((err: any) => {
-                toast.error(`Gagal: ${err.message}`, { id: toastId });
+            .catch((error: unknown) => {
+                toast.error(`Gagal: ${getErrorMessage(error)}`, { id: toastId });
             });
     };
 
@@ -310,7 +313,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         });
 
         // 2. Membentuk Struktur Baris Excel (Array of Arrays)
-        const excelRows: any[][] = [];
+        const excelRows: ExcelRow[] = [];
 
         if (exportType === 'simple') {
             const tableHeaders = ['No', 'Nama Panggilan', 'Nama Asli'];
@@ -448,7 +451,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             const worksheet = workbook.Sheets[sheetName];
 
             // Definisikan tipe untuk row JSON
-            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+            const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { header: 1 });
 
             // Cari header text row index
             let headerRowIndex = -1;
@@ -464,7 +467,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             }
 
             // Mapping column indices
-            const headers: string[] = jsonData[headerRowIndex];
+            const headers = jsonData[headerRowIndex].map((value) => String(value ?? ''));
             const getColIndex = (name: string) => headers.findIndex(h => typeof h === 'string' && h.includes(name));
 
             const colFamily = getColIndex('Nama Keluarga');
@@ -579,8 +582,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             setIsImportModalOpen(false);
             refreshMembers();
 
-        } catch (error: any) {
-            toast.error(`Gagal import: ${error.message}`, { id: toastId, duration: 8000 });
+        } catch (error: unknown) {
+            toast.error(`Gagal import: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
         } finally {
             setIsImporting(false);
             e.target.value = ''; // Reset file input
@@ -600,7 +603,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
 
-            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+            const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { header: 1 });
 
             let headerRowIndex = -1;
             for (let i = 0; i < jsonData.length; i++) {
@@ -614,7 +617,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 throw new Error('Format template tidak valid. Pastikan menggunakan file template yang sama.');
             }
 
-            const headers: string[] = jsonData[headerRowIndex];
+            const headers = jsonData[headerRowIndex].map((value) => String(value ?? ''));
             const colName = headers.findIndex(h => typeof h === 'string' && h.includes('Nama Asli'));
 
             if (colName === -1) {
@@ -670,8 +673,8 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             setIsImportModalOpen(false);
             refreshMembers();
 
-        } catch (error: any) {
-            toast.error(`Gagal rollback: ${error.message}`, { id: toastId, duration: 8000 });
+        } catch (error: unknown) {
+            toast.error(`Gagal rollback: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
         } finally {
             setIsImporting(false);
             e.target.value = ''; // Reset file input
@@ -717,7 +720,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             try {
                 await navigator.clipboard.writeText(text);
                 toast.success('Data berhasil disalin ke clipboard');
-            } catch (err) {
+            } catch {
                 toast.error('Gagal menyalin data');
             }
         };
@@ -1003,7 +1006,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 <div className="relative">
                                     <select
                                         value={memberStatus}
-                                        onChange={(e) => setMemberStatus(e.target.value as any)}
+                                        onChange={(e) => setMemberStatus(e.target.value as MemberStatusFilter)}
                                         className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
                                     >
                                         <option value="Aktif">Aktif Saja</option>
@@ -1020,7 +1023,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 <div className="relative">
                                     <select
                                         value={educateFilter}
-                                        onChange={(e) => setEducateFilter(e.target.value as any)}
+                                        onChange={(e) => setEducateFilter(e.target.value as EducateFilter)}
                                         className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
                                     >
                                         <option value="Semua">Semua (Jamaah & Binaan)</option>
@@ -1037,7 +1040,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 <div className="relative">
                                     <select
                                         value={duafaFilter}
-                                        onChange={(e) => setDuafaFilter(e.target.value as any)}
+                                        onChange={(e) => setDuafaFilter(e.target.value as DuafaFilter)}
                                         className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none cursor-pointer text-slate-700"
                                     >
                                         <option value="Semua">Semua (Duafa & Non-Duafa)</option>

@@ -18,7 +18,7 @@ export type SambungNgajiStatus = typeof SAMBUNG_NGAJI_STATUS_OPTIONS[number];
 export interface MudaMudiInfo {
     occupation_status?: OccupationStatus | string;
     sambung_ngaji_status?: SambungNgajiStatus | string;
-    updated_at?: any;
+    updated_at?: Timestamp;
     updated_by?: string;
 }
 
@@ -44,3 +44,4 @@ export const isMudaMudiLevel = (level?: string): boolean => {
 export const getKelompokSlug = (kelompokName: string): string => {
     return kelompokName.trim().toLowerCase().replace(/\s+/g, '-');
 };
+import type { Timestamp } from 'firebase/firestore';

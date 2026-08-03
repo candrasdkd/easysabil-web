@@ -1,7 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import MemberList from '../components/MemberList';
-import { setMembersStore } from '../types/Member';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import { useRoleMembersStore } from '../store/membersStore';
 
 export default function MembersListPage() {
@@ -21,11 +20,6 @@ export default function MembersListPage() {
             fetchByRole(profile);
         }
     }, [isInitialized, profile, isLoading, fetchByRole]);
-
-    // Sync ke localStorage store (agar kompatibel dengan kode lain yang masih pakai getMembersStore)
-    useEffect(() => {
-        if (members.length > 0) setMembersStore(members);
-    }, [members]);
 
     // refreshMembers: invalidate cache lalu fetch ulang
     const refreshMembers = useCallback(async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Dashboard from '../components/Dashboard'
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import { useRoleMembersStore } from '../store/membersStore';
 import { useFamiliesStore } from '../store/familiesStore';
 

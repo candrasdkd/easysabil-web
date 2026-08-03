@@ -1,6 +1,6 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, type Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import type { UserProfile } from '../contexts/AuthContext';
+import type { UserProfile } from '../types/auth';
 
 export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'IMPORT' | 'EXPORT';
 export type AuditEntity = 'MEMBER' | 'FAMILY' | 'ORDER' | 'SYSTEM' | 'ATTENDANCE';
@@ -13,7 +13,7 @@ export interface AuditLogEntry {
     actor_uid: string;
     actor_email: string;
     actor_status: number;
-    timestamp: any; // serverTimestamp
+    timestamp: Timestamp;
     changes?: string; // Serialized JSON of changes or description
     details?: string;
 }
@@ -24,14 +24,14 @@ export const logAudit = async (
     entityId: string,
     entityName: string,
     profile: UserProfile | null,
-    changes?: any,
+    changes?: unknown,
     details?: string
 ) => {
     if (!profile) return; // Don't log if no user profile is available
 
     try {
         const auditRef = collection(db, 'audit_logs');
-        const logData: AuditLogEntry = {
+        const logData = {
             action,
             entity,
             entity_id: entityId,
@@ -40,7 +40,7 @@ export const logAudit = async (
             actor_email: profile.email,
             actor_status: profile.status,
             timestamp: serverTimestamp(),
-        };
+        } as Omit<AuditLogEntry, 'timestamp'> & { timestamp: ReturnType<typeof serverTimestamp> };
 
         if (changes) {
             logData.changes = typeof changes === 'string' ? changes : JSON.stringify(changes);

@@ -31,3 +31,28 @@ export type DataOrder = {
     payment_method?: string | null;
     created_at?: string;
 };
+
+export interface OrderCategory {
+    id: string;
+    name: string;
+    price: number;
+    year: number;
+}
+
+export interface OrderCategoryInput {
+    name: string;
+    price: number;
+    year: number;
+}
+
+export interface OrderFormData {
+    idCard: number | string | null;
+    user: DataDropdown;
+    category: SelectedCategoryProps;
+    totalOrder: string;
+    note: string;
+    isPayment: boolean;
+    moneyHolder: string;
+    paymentMethod: string;
+    actualPrice: string;
+}

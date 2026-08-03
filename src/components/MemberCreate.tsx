@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, orderBy, getDocs, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import {
@@ -22,7 +22,8 @@ import {
     Briefcase,
     BookOpen
 } from 'lucide-react';
-import { type Familys } from '../types/Member';
+import { type Family } from '../types/Member';
+import { getErrorMessage } from '../lib/errors';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
@@ -48,7 +49,7 @@ export default function MemberCreate() {
     const { profile } = useAuth();
 
     // --- STATE UNTUK SEARCHABLE KELUARGA ---
-    const [keluargaOptions, setKeluargaOptions] = useState<Familys[]>([]);
+    const [keluargaOptions, setKeluargaOptions] = useState<Family[]>([]);
     const [loadingKeluarga, setLoadingKeluarga] = useState(false);
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [familySearch, setFamilySearch] = useState('');
@@ -98,7 +99,7 @@ export default function MemberCreate() {
                 }
                 const querySnapshot = await getDocs(q);
                 const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setKeluargaOptions(data as any as Familys[]);
+                setKeluargaOptions(data as Family[]);
             } catch (error) {
                 console.error("Error fetching families:", error);
             } finally {
@@ -139,21 +140,11 @@ export default function MemberCreate() {
         return `${years} Tahun ${months} Bulan`;
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        let finalValue: any = value;
-        if (type === 'checkbox') {
-            finalValue = (e.target as HTMLInputElement).checked;
-        }
-
-        if (name === 'order') {
-            finalValue = value === '' ? null : parseInt(value);
-        }
-
+    const updateFormValue = (name: string, value: string | number | boolean | null) => {
         setFormValues(prev => {
-            const newState = { ...prev, [name]: finalValue };
+            const newState = { ...prev, [name]: value };
             if (name === 'date_of_birth') {
-                newState.age = value ? formatAge(value) : '-';
+                newState.age = typeof value === 'string' && value ? formatAge(value) : '-';
             }
             if (name === 'marriage_status' && value === 'Menikah') {
                 newState.education = 'Dewasa';
@@ -162,7 +153,21 @@ export default function MemberCreate() {
         });
     };
 
-    const handleSelectFamily = (family: Familys) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value, type } = e.target;
+        let finalValue: string | number | boolean | null = value;
+        if (type === 'checkbox') {
+            finalValue = (e.target as HTMLInputElement).checked;
+        }
+
+        if (name === 'order') {
+            finalValue = value === '' ? null : parseInt(value);
+        }
+
+        updateFormValue(name, finalValue);
+    };
+
+    const handleSelectFamily = (family: Family) => {
         setFormValues(prev => ({ ...prev, keluarga: String(family.id) }));
         setFamilySearch(family.name);
         setIsFamilyDropdownOpen(false);
@@ -223,7 +228,7 @@ export default function MemberCreate() {
                 created_at: new Date().toISOString(),
             };
 
-            const cleanBody = Object.fromEntries(Object.entries(body).filter(([_, v]) => v !== undefined));
+            const cleanBody = Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined));
 
             const { error, id: newDocId } = await addDoc(collection(db, 'sensus'), cleanBody).then(docRef => ({ error: null, id: docRef.id })).catch(err => ({ error: err, id: null }));
             if (error) throw error;
@@ -255,10 +260,10 @@ export default function MemberCreate() {
             setFamilySearch('');
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        } catch (error: any) {
-            console.log(error);
+        } catch (error: unknown) {
+            console.error(error);
             // Error toast update
-            toast.error(`Gagal simpan: ${error.message}`, { id: toastId });
+            toast.error(`Gagal simpan: ${getErrorMessage(error)}`, { id: toastId });
         } finally {
             setIsSubmitting(false);
         }
@@ -401,7 +406,7 @@ export default function MemberCreate() {
                                     <Label required>Tanggal Lahir</Label>
                                     <CustomDatePicker
                                         value={formValues.date_of_birth}
-                                        onChange={(val: string) => handleChange({ target: { name: 'date_of_birth', value: val, type: 'text' } } as any)}
+                                        onChange={(value) => updateFormValue('date_of_birth', value)}
                                     />
                                 </div>
                             )}

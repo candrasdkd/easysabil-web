@@ -4,22 +4,21 @@ import {
     addDoc, doc, updateDoc, deleteDoc, writeBatch, getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, X, Check, Users, Download, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ChevronDown, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useFamiliesStore } from '../store/familiesStore';
 import { logAudit } from '../utils/auditLogger';
+import type { Family } from '../types/Member';
+import { getErrorMessage } from '../lib/errors';
 
 const KELOMPOK_OPTIONS = ['Kelompok 1', 'Kelompok 2', 'Kelompok 3', 'Kelompok 4', 'Kelompok 5'];
 const INITIAL_PAGE_SIZE = 15;
 
-interface Family {
-    id: string;
-    name: string;
-    kelompok: string;
-}
+type ExcelCell = string | number | boolean | null | undefined;
+type ExcelRow = ExcelCell[];
 
 const EMPTY_FORM = { name: '', kelompok: '' };
 
@@ -162,7 +161,7 @@ export default function FamiliesPage() {
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
 
-            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+            const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { header: 1 });
 
             // Cari index header text
             let headerRowIndex = -1;
@@ -177,7 +176,7 @@ export default function FamiliesPage() {
                 throw new Error('Format template tidak valid. Pastikan menggunakan file template yang benar.');
             }
 
-            const headers: string[] = jsonData[headerRowIndex];
+            const headers = jsonData[headerRowIndex].map((value) => String(value ?? ''));
             const getColIndex = (name: string) => headers.findIndex(h => typeof h === 'string' && h.includes(name));
 
             const colName = getColIndex('Nama Keluarga');
@@ -236,8 +235,8 @@ export default function FamiliesPage() {
             setIsImportModalOpen(false);
             refreshStore();
 
-        } catch (error: any) {
-            toast.error(`Gagal import: ${error.message}`, { id: toastId, duration: 8000 });
+        } catch (error: unknown) {
+            toast.error(`Gagal import: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
         } finally {
             setIsImporting(false);
             e.target.value = ''; // Reset file input
@@ -257,7 +256,7 @@ export default function FamiliesPage() {
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
 
-            const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+            const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet, { header: 1 });
 
             let headerRowIndex = -1;
             for (let i = 0; i < jsonData.length; i++) {
@@ -271,8 +270,8 @@ export default function FamiliesPage() {
                 throw new Error('Format template tidak valid. Pastikan menggunakan file template yang sama.');
             }
 
-            const headers: string[] = jsonData[headerRowIndex];
-            const colName = headers.findIndex(h => typeof h === 'string' && h.includes('Nama Keluarga'));
+            const headers = jsonData[headerRowIndex].map((value) => String(value ?? ''));
+            const colName = headers.findIndex((header) => header.includes('Nama Keluarga'));
 
             if (colName === -1) {
                 throw new Error('Kolom Nama Keluarga tidak ditemukan.');
@@ -292,7 +291,14 @@ export default function FamiliesPage() {
             // We need to fetch all families first or use the state `displayed` (or maybe fetch fresh)
             // But we already have `displayed` which contains the current loaded data? Let's fetch fresh.
             const querySnapshot = await getDocs(collection(db, 'families'));
-            const allFamilies = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any as Family[];
+            const allFamilies: Family[] = querySnapshot.docs.map((familyDocument) => {
+                const data = familyDocument.data();
+                return {
+                    id: familyDocument.id,
+                    name: typeof data.name === 'string' ? data.name : '',
+                    kelompok: typeof data.kelompok === 'string' ? data.kelompok : '',
+                };
+            });
 
             const familiesToDelete = allFamilies.filter(f => namesToDelete.has(f.name.toUpperCase()));
 
@@ -329,8 +335,8 @@ export default function FamiliesPage() {
             setIsImportModalOpen(false);
             refreshStore();
 
-        } catch (error: any) {
-            toast.error(`Gagal rollback: ${error.message}`, { id: toastId, duration: 8000 });
+        } catch (error: unknown) {
+            toast.error(`Gagal rollback: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
         } finally {
             setIsImporting(false);
             e.target.value = ''; // Reset file input

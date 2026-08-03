@@ -1,7 +1,8 @@
 import { Navigate, useLocation } from "react-router";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from '../contexts/auth';
 import { type ReactNode } from "react";
 import { MessageCircle, LogOut } from "lucide-react";
+import { isKnownUserStatus } from '../types/auth';
 
 // Admin WhatsApp number
 const ADMIN_WA_NUMBER = "6285156775933"; // Ganti dengan nomor WhatsApp admin
@@ -26,8 +27,28 @@ export default function ProtectedRoute({ children, adminOnly = false, superAdmin
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
+    if (!profile || !isKnownUserStatus(profile.status)) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+                <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Profil Tidak Valid</h2>
+                    <p className="text-gray-500 text-sm mb-6">
+                        Profil akun tidak ditemukan atau status aksesnya tidak valid. Hubungi admin untuk memperbaiki akun.
+                    </p>
+                    <button
+                        onClick={() => signOut()}
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white hover:bg-red-700 font-medium rounded-xl transition-colors"
+                    >
+                        <LogOut size={18} />
+                        Keluar
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     // If not active, show "pending" screen — user stays logged in but can't do anything
-    if (profile && !profile.isActive) {
+    if (!profile.isActive) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col items-center justify-center p-6">
                 <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
@@ -62,12 +83,12 @@ export default function ProtectedRoute({ children, adminOnly = false, superAdmin
     }
 
     // Super Admin only routes (status === 0)
-    if (superAdminOnly && profile && profile.status !== 0) {
+    if (superAdminOnly && profile.status !== 0) {
         return <Navigate to="/" replace />;
     }
 
     // Admin only routes (status === 0 or 1)
-    if (adminOnly && profile && profile.status > 1) {
+    if (adminOnly && profile.status > 1) {
         return <Navigate to="/" replace />;
     }
 

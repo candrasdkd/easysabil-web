@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import toast from 'react-hot-toast';
@@ -22,7 +22,8 @@ import {
     Hash,
     Tag,
     AlertTriangle,
-    Briefcase
+    Briefcase,
+    type LucideIcon,
 } from 'lucide-react';
 import { type Member } from '../types/Member';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
@@ -31,13 +32,14 @@ import {
     isMudaMudiLevel,
     type MudaMudiInfo
 } from '../constants/mudaMudiOptions';
+import { getErrorMessage } from '../lib/errors';
 
 dayjs.locale('id');
 
 
 
 // --- Helper Component: Detail Item ---
-const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: any, label: string, value: React.ReactNode, subValue?: string }) => (
+const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: LucideIcon, label: string, value: React.ReactNode, subValue?: string }) => (
     <div className="flex items-start gap-4 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl hover:border-blue-100 transition-colors">
         <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 shadow-sm">
             <Icon size={20} />
@@ -51,7 +53,14 @@ const DetailItem = ({ icon: Icon, label, value, subValue }: { icon: any, label: 
 );
 
 // --- Helper Component: Badge ---
-const StatusBadge = ({ active, activeText, inactiveText, color }: any) => {
+interface StatusBadgeProps {
+    active: boolean;
+    activeText: string;
+    inactiveText: string;
+    color: 'green' | 'blue';
+}
+
+const StatusBadge = ({ active, activeText, inactiveText, color }: StatusBadgeProps) => {
     const bg = active
         ? (color === 'green' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-blue-100 text-blue-700 border-blue-200')
         : 'bg-slate-100 text-slate-500 border-slate-200';
@@ -103,9 +112,9 @@ export default function MemberShow() {
                     console.error("Error fetching subcollection muda_mudi_info:", err);
                 }
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             // 2. Ganti error fetch
-            toast.error(`Gagal memuat data: ${err.message}`);
+            toast.error(`Gagal memuat data: ${getErrorMessage(err)}`);
         } finally {
             setIsLoading(false);
         }
@@ -140,9 +149,9 @@ export default function MemberShow() {
             // 6. Sukses hapus (update toast loading jadi sukses)
             toast.success('Data berhasil dihapus', { id: toastId });
             navigate('/members');
-        } catch (err: any) {
+        } catch (err: unknown) {
             // 7. Error hapus
-            toast.error(err.message, { id: toastId });
+            toast.error(getErrorMessage(err, 'Gagal menghapus data'), { id: toastId });
             setIsLoading(false);
         }
     };
