@@ -78,7 +78,10 @@ The application expects the following collections in your Firebase Firestore:
 5. `orders`: Individual order transactions, containing payment statuses and buyer info.
 6. `attendance_logs`: Daily attendance records keyed by unique dates.
 
-> **Security Note**: Remember to configure your Firestore rules in production so that unauthorized users cannot arbitrarily delete or modify records.
+> **Security Note**: Aturan keamanan Firestore dikelola di dalam file [`firestore.rules`](./firestore.rules) dan dikonfigurasi melalui [`firebase.json`](./firebase.json). Untuk menerapkan aturan ke Firebase:
+> ```bash
+> npm run deploy:rules
+> ```
 
 ## Project Structure
 

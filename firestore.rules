@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdminOrAdmin() {
+      return isAuthenticated() && (getUserData().status == 0 || getUserData().status == 1);
+    }
+
+    function isDesaLevel() {
+      let status = getUserData().status;
+      return isAuthenticated() && (status == 0 || status == 1 || status == 2 || status == 4);
+    }
+
+    function isKelompokLevel() {
+      let status = getUserData().status;
+      return isAuthenticated() && (status == 3 || status == 5);
+    }
+
+    // Helper mencegah manipulasi data lintas kelompok
+    function canCreateData() {
+      return isDesaLevel() || (isKelompokLevel() && request.resource.data.kelompok == getUserData().kelompok);
+    }
+    function canUpdateData() {
+      return isDesaLevel() || (isKelompokLevel() && resource.data.kelompok == getUserData().kelompok && request.resource.data.kelompok == getUserData().kelompok);
+    }
+    function canDeleteData() {
+      return isDesaLevel() || (isKelompokLevel() && resource.data.kelompok == getUserData().kelompok);
+    }
+
+    // COLLECTION: users
+    match /users/{userId} {
+      allow read: if isSuperAdminOrAdmin() || request.auth.uid == userId;
+      
+      // Cegah user menyusupkan status 0 (Super Admin) atau 1 (Admin) saat register
+      allow create: if isAuthenticated() && request.auth.uid == userId 
+                    && (!request.resource.data.keys().hasAll(['status']) 
+                        || (request.resource.data.status != 0 && request.resource.data.status != 1));
+      
+      allow update, delete: if isSuperAdminOrAdmin();
+    }
+    
+    // COLLECTION: families 
+    match /families/{familyId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateData();
+      allow update: if canUpdateData();
+      allow delete: if canDeleteData();
+    }
+
+    // COLLECTION: sensus & subcollection muda_mudi_info
+    match /sensus/{sensusId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateData();
+      allow update: if canUpdateData();
+      allow delete: if canDeleteData();
+
+      // Subcollection khusus informasi Muda/i (status 0, 1, 4, 5)
+      match /muda_mudi_info/{infoId} {
+        allow read, write: if isAuthenticated() && (getUserData().status in [0, 1, 4, 5]);
+      }
+    }
+
+    // COLLECTION: category_orders
+    match /category_orders/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isDesaLevel();
+    }
+
+    // COLLECTION: orders
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateData();
+      allow update: if canUpdateData();
+      allow delete: if canDeleteData();
+    }
+
+    // COLLECTION: attendance_sessions (Absensi Sesi Harian)
+    match /attendance_sessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateData();
+      allow update: if canUpdateData();
+      allow delete: if canDeleteData();
+    }
+
+    // COLLECTION: attendance_logs (Legacy)
+    match /attendance_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateData();
+      allow update: if canUpdateData();
+      allow delete: if canDeleteData();
+    }
+    
+    // COLLECTION: audit_logs (Append-only)
+    match /audit_logs/{document=**} {
+      allow read: if isSuperAdminOrAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; 
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

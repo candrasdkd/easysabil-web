@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
-import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { doc, deleteDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '../firebase/client';
@@ -32,6 +31,7 @@ import { useFamiliesStore } from '../store/familiesStore';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
 import { getErrorMessage } from '../lib/errors';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 dayjs.locale('id');
 
@@ -119,6 +119,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
+    const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [rollbackCandidates, setRollbackCandidates] = useState<Member[] | null>(null);
+    const [isRollingBack, setIsRollingBack] = useState(false);
 
     // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: keyof Member | 'actions'; direction: 'asc' | 'desc' }>({ key: 'order', direction: 'asc' });
@@ -274,30 +278,40 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     };
 
     const handleDelete = (member: Member) => {
-        if (!window.confirm(`Hapus data "${member.alias || member.name}"?`)) return;
+        setMemberToDelete(member);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!memberToDelete) return;
+        setIsDeleting(true);
         const toastId = toast.loading('Menghapus data...');
-        deleteDoc(doc(db, 'sensus', member.uuid))
-            .then(async () => {
-                await logAudit('DELETE', 'MEMBER', member.uuid, member.name, profile, null, `Menghapus anggota: ${member.name}`);
+        try {
+            await deleteDoc(doc(db, 'sensus', memberToDelete.uuid));
+            await logAudit('DELETE', 'MEMBER', memberToDelete.uuid, memberToDelete.name, profile, null, `Menghapus anggota: ${memberToDelete.name}`);
 
-                useMembersStore.getState().invalidate();
-                useRoleMembersStore.getState().invalidate();
+            useMembersStore.getState().invalidate();
+            useRoleMembersStore.getState().invalidate();
 
-                toast.success('Data berhasil dihapus', { id: toastId });
-                refreshMembers();
-            })
-            .catch((error: unknown) => {
-                toast.error(`Gagal: ${getErrorMessage(error)}`, { id: toastId });
-            });
+            toast.success('Data berhasil dihapus', { id: toastId });
+            setMemberToDelete(null);
+            refreshMembers();
+        } catch (error: unknown) {
+            toast.error(`Gagal: ${getErrorMessage(error)}`, { id: toastId });
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     // --- ADVANCED EXCEL EXPORT (GROUPED BY FAMILY WITH OPTIONS) ---
-    const handleExportExcel = (exportType: 'simple' | 'full' = 'simple') => {
+    const handleExportExcel = async (exportType: 'simple' | 'full' = 'simple') => {
         setIsExportModalOpen(false);
         const toastId = toast.loading('Menyiapkan file Excel...');
 
-        // 1. Grouping Data berdasarkan Nama Keluarga
-        const groupedData: Record<string, Member[]> = {};
+        try {
+            const XLSX = await import('xlsx');
+
+            // 1. Grouping Data berdasarkan Nama Keluarga
+            const groupedData: Record<string, Member[]> = {};
 
         // Kita copy dulu dan sort berdasarkan Nama Keluarga biar rapi urutan groupnya
         const sortedForExcel = [...processedMembers].sort((a, b) =>
@@ -399,42 +413,50 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
 
         toast.success('File Excel berhasil diunduh', { id: toastId });
+        } catch (error: unknown) {
+            toast.error(`Gagal ekspor: ${getErrorMessage(error)}`, { id: toastId });
+        }
     };
 
     // --- NEW: EXCEL IMPORT ---
-    const handleDownloadTemplate = () => {
-        const headers = [
-            'Nama Keluarga', 'Nama Asli', 'Nama Panggilan', 'Jenis Kelamin',
-            'Tgl Lahir (YYYY-MM-DD)', 'Jenjang', 'Status Nikah', 'Status Aktif', 'No Urut'
-        ];
+    const handleDownloadTemplate = async () => {
+        try {
+            const XLSX = await import('xlsx');
+            const headers = [
+                'Nama Keluarga', 'Nama Asli', 'Nama Panggilan', 'Jenis Kelamin',
+                'Tgl Lahir (YYYY-MM-DD)', 'Jenjang', 'Status Nikah', 'Status Aktif', 'No Urut'
+            ];
 
-        const sampleData = [
-            ['KELUARGA BUDI', 'Budi Santoso', 'Budi', 'Laki - Laki', '1980-05-15', 'Dewasa', 'Menikah', 'Aktif', 1],
-            ['KELUARGA BUDI', 'Siti Aminah', 'Siti', 'Perempuan', '1985-08-20', 'Dewasa', 'Menikah', 'Aktif', 2],
-            ['KELUARGA BUDI', 'Joko Anwar', 'Joko', 'Laki - Laki', '2010-02-10', 'Remaja', 'Belum Menikah', 'Aktif', 3]
-        ];
+            const sampleData = [
+                ['KELUARGA BUDI', 'Budi Santoso', 'Budi', 'Laki - Laki', '1980-05-15', 'Dewasa', 'Menikah', 'Aktif', 1],
+                ['KELUARGA BUDI', 'Siti Aminah', 'Siti', 'Perempuan', '1985-08-20', 'Dewasa', 'Menikah', 'Aktif', 2],
+                ['KELUARGA BUDI', 'Joko Anwar', 'Joko', 'Laki - Laki', '2010-02-10', 'Remaja', 'Belum Menikah', 'Aktif', 3]
+            ];
 
-        const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
 
-        ws['!cols'] = [
-            { wch: 25 }, // Nama Keluarga
-            { wch: 30 }, // Nama Asli
-            { wch: 20 }, // Nama Panggilan
-            { wch: 15 }, // Jenis Kelamin
-            { wch: 25 }, // Tgl Lahir
-            { wch: 15 }, // Jenjang
-            { wch: 15 }, // Status Nikah
-            { wch: 15 }, // Status Aktif
-            { wch: 10 }, // No Urut
-        ];
+            ws['!cols'] = [
+                { wch: 25 }, // Nama Keluarga
+                { wch: 30 }, // Nama Asli
+                { wch: 20 }, // Nama Panggilan
+                { wch: 15 }, // Jenis Kelamin
+                { wch: 25 }, // Tgl Lahir
+                { wch: 15 }, // Jenjang
+                { wch: 15 }, // Status Nikah
+                { wch: 15 }, // Status Aktif
+                { wch: 10 }, // No Urut
+            ];
 
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Template Import');
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Template Import');
 
-        const fileName = 'Template_Import_Jamaah.xlsx';
-        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
-        toast.success('Template berhasil diunduh');
+            const fileName = 'Template_Import_Jamaah.xlsx';
+            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
+            toast.success('Template berhasil diunduh');
+        } catch (error: unknown) {
+            toast.error(`Gagal mengunduh template: ${getErrorMessage(error)}`);
+        }
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -445,6 +467,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         const toastId = toast.loading('Memproses file Excel...');
 
         try {
+            const XLSX = await import('xlsx');
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
             const sheetName = workbook.SheetNames[0];
@@ -598,6 +621,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         const toastId = toast.loading('Membaca file Excel untuk dibatalkan...');
 
         try {
+            const XLSX = await import('xlsx');
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
             const sheetName = workbook.SheetNames[0];
@@ -643,18 +667,27 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 return;
             }
 
-            const confirmDelete = window.confirm(`Ditemukan ${membersToDelete.length} orang dari Excel yang cocok di database saat ini. Yakin ingin MENGHAPUS mereka semua? (Aksi ini tidak bisa dikembalikan)`);
-            if (!confirmDelete) {
-                toast.dismiss(toastId);
-                return;
-            }
+            toast.dismiss(toastId);
+            setIsImportModalOpen(false);
+            setRollbackCandidates(membersToDelete);
 
-            toast.loading(`Menghapus ${membersToDelete.length} data dari database...`, { id: toastId });
+        } catch (error: unknown) {
+            toast.error(`Gagal rollback: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
+        } finally {
+            setIsImporting(false);
+            e.target.value = ''; // Reset file input
+        }
+    };
 
+    const handleConfirmRollback = async () => {
+        if (!rollbackCandidates || rollbackCandidates.length === 0) return;
+        setIsRollingBack(true);
+        const toastId = toast.loading(`Menghapus ${rollbackCandidates.length} data dari database...`);
+        try {
             const sensusColRef = collection(db, 'sensus');
             const chunks = [];
-            for (let i = 0; i < membersToDelete.length; i += 450) {
-                chunks.push(membersToDelete.slice(i, i + 450));
+            for (let i = 0; i < rollbackCandidates.length; i += 450) {
+                chunks.push(rollbackCandidates.slice(i, i + 450));
             }
 
             for (const chunk of chunks) {
@@ -669,15 +702,13 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             useMembersStore.getState().invalidate();
             useRoleMembersStore.getState().invalidate();
 
-            toast.success(`${membersToDelete.length} data berhasil dibatalkan (dihapus)`, { id: toastId });
-            setIsImportModalOpen(false);
+            toast.success(`${rollbackCandidates.length} data berhasil dibatalkan (dihapus)`, { id: toastId });
+            setRollbackCandidates(null);
             refreshMembers();
-
         } catch (error: unknown) {
             toast.error(`Gagal rollback: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
         } finally {
-            setIsImporting(false);
-            e.target.value = ''; // Reset file input
+            setIsRollingBack(false);
         }
     };
 
@@ -747,6 +778,45 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             ? <ArrowUp size={14} className="text-blue-600" />
             : <ArrowDown size={14} className="text-blue-600" />;
     };
+
+    const isMudaMudi = profile?.status === 4 || profile?.status === 5;
+    const isAdminOrSuperAdmin = profile?.status === 0 || profile?.status === 1;
+
+    const tableColumns = useMemo(() => {
+        const cols: { label: string; key: keyof Member; width: string }[] = [
+            { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
+            { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
+            { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
+        ];
+
+        if (isAdminOrSuperAdmin) {
+            cols.push({ label: 'Kelompok', key: 'kelompok', width: 'min-w-[130px]' });
+        }
+
+        cols.push(
+            { label: 'Umur', key: 'age', width: 'w-24' },
+            { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' }
+        );
+
+        if (isMudaMudi) {
+            cols.push(
+                { label: 'Status Pekerjaan', key: 'occupation_status', width: 'min-w-[160px]' },
+                { label: 'Sambung Ngaji', key: 'sambung_ngaji_status', width: 'min-w-[160px]' }
+            );
+        } else {
+            cols.push(
+                { label: 'Status Nikah', key: 'marriage_status', width: 'min-w-[140px]' }
+            );
+        }
+
+        cols.push({ label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' });
+
+        if (!isMudaMudi) {
+            cols.push({ label: 'No', key: 'order', width: 'w-16' });
+        }
+
+        return cols;
+    }, [isAdminOrSuperAdmin, isMudaMudi]);
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 font-sans text-slate-900">
@@ -834,37 +904,15 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                {(
-                                    profile?.status === 4 || profile?.status === 5
-                                        ? [
-                                            { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
-                                            { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
-                                            { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
-                                            { label: 'Umur', key: 'age', width: 'w-24' },
-                                            { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' },
-                                            { label: 'Status Pekerjaan', key: 'occupation_status', width: 'min-w-[160px]' },
-                                            { label: 'Sambung Ngaji', key: 'sambung_ngaji_status', width: 'min-w-[160px]' },
-                                            { label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' },
-                                        ]
-                                        : [
-                                            { label: 'Nama Panggilan', key: 'name', width: 'min-w-[200px]' },
-                                            { label: 'Jenjang', key: 'level', width: 'min-w-[120px]' },
-                                            { label: 'Gender', key: 'gender', width: 'min-w-[120px]' },
-                                            { label: 'Umur', key: 'age', width: 'w-24' },
-                                            { label: 'Tgl Lahir', key: 'date_of_birth', width: 'min-w-[150px]' },
-                                            { label: 'Status Nikah', key: 'marriage_status', width: 'min-w-[140px]' },
-                                            { label: 'Keluarga', key: 'family_name', width: 'min-w-[120px]' },
-                                            { label: 'No', key: 'order', width: 'w-16' },
-                                        ]
-                                ).map((col) => (
+                                {tableColumns.map((col) => (
                                     <th
                                         key={col.key}
                                         className={`px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors ${col.width}`}
-                                        onClick={() => handleSort(col.key as keyof Member)}
+                                        onClick={() => handleSort(col.key)}
                                     >
                                         <div className="flex items-center gap-2">
                                             {col.label}
-                                            <SortIcon columnKey={col.key as keyof Member} />
+                                            <SortIcon columnKey={col.key} />
                                         </div>
                                     </th>
                                 ))}
@@ -889,11 +937,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     </td>
                                     <td className="px-6 py-4"><Badge color="blue">{row.level}</Badge></td>
                                     <td className="px-6 py-4">{row.gender}</td>
+                                    {isAdminOrSuperAdmin && (
+                                        <td className="px-6 py-4">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                                {highlightMatch(row.kelompok || '-', searchText)}
+                                            </span>
+                                        </td>
+                                    )}
                                     <td className="px-6 py-4 font-medium">{formatAge(row.date_of_birth)}</td>
                                     <td className="px-6 py-4 text-slate-500">
                                         {row.date_of_birth ? dayjs(row.date_of_birth).format('DD MMM YYYY') : '-'}
                                     </td>
-                                    {profile?.status === 4 || profile?.status === 5 ? (
+                                    {isMudaMudi ? (
                                         <>
                                             <td className="px-6 py-4 text-slate-600">{row.occupation_status || <span className="text-slate-300">-</span>}</td>
                                             <td className="px-6 py-4 text-slate-600">{row.sambung_ngaji_status || <span className="text-slate-300">-</span>}</td>
@@ -904,7 +959,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                         </>
                                     )}
                                     <td className="px-6 py-4 text-slate-500">{highlightMatch(row.family_name, searchText)}</td>
-                                    {(profile?.status !== 4 && profile?.status !== 5) && (
+                                    {!isMudaMudi && (
                                         <td className="px-6 py-4 text-slate-400 font-mono text-xs">#{row.order}</td>
                                     )}
 
@@ -932,7 +987,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={tableColumns.length + 1} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <Search size={32} className="text-slate-300 mb-2" />
                                             <p className="font-medium">Data tidak ditemukan</p>
@@ -1314,6 +1369,26 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     </div>
                 </div>
             )}
+
+            <ConfirmDeleteModal
+                isOpen={Boolean(memberToDelete)}
+                onClose={() => setMemberToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                uploading={isDeleting}
+                title="Hapus Anggota?"
+                description={`Apakah Anda yakin ingin menghapus data "${memberToDelete?.alias || memberToDelete?.name}"? Aksi ini tidak dapat dibatalkan.`}
+                confirmLabel="Ya, Hapus"
+            />
+
+            <ConfirmDeleteModal
+                isOpen={Boolean(rollbackCandidates)}
+                onClose={() => setRollbackCandidates(null)}
+                onConfirm={handleConfirmRollback}
+                uploading={isRollingBack}
+                title="Batalkan (Rollback) Import?"
+                description={`Ditemukan ${rollbackCandidates?.length || 0} orang dari Excel yang cocok di database. Seluruh data ini akan dihapus permanen. Lanjutkan?`}
+                confirmLabel="Ya, Hapus Semua"
+            />
 
         </div>
     );

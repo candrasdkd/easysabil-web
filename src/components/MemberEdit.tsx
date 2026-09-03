@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/client';
 import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
@@ -29,6 +29,7 @@ import { getErrorMessage } from '../lib/errors';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
+import { useFamiliesStore } from '../store/familiesStore';
 import {
     OCCUPATION_STATUS_OPTIONS,
     SAMBUNG_NGAJI_STATUS_OPTIONS,
@@ -52,8 +53,8 @@ export default function MemberEdit() {
     const [isLoadingDetail, setIsLoadingDetail] = useState(true);
     const { profile } = useAuth();
 
-    const [keluargaOptions, setKeluargaOptions] = useState<Family[]>([]);
-    const [loadingKeluarga, setLoadingKeluarga] = useState(false);
+    // --- STATE UNTUK SEARCHABLE KELUARGA (dari Zustand store ter-cache) ---
+    const { families: keluargaOptions, loading: loadingKeluarga, fetchFamilies } = useFamiliesStore();
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [familySearch, setFamilySearch] = useState('');
     const familyDropdownRef = useRef<HTMLDivElement>(null);
@@ -86,32 +87,6 @@ export default function MemberEdit() {
     const filteredKeluarga = keluargaOptions.filter(k =>
         k.name.toLowerCase().includes(familySearch.toLowerCase())
     );
-
-    // --- FETCH DATA LOGIC ---
-
-    const fetchKeluarga = useCallback(async () => {
-        if (!profile) return;
-        setLoadingKeluarga(true);
-        try {
-            let q;
-            if (profile.status === 3 || profile.status === 5) {
-                q = query(
-                    collection(db, 'families'),
-                    where('kelompok', '==', profile.kelompok),
-                    orderBy('name', 'asc')
-                );
-            } else {
-                q = query(collection(db, 'families'), orderBy('name', 'asc'));
-            }
-            const querySnapshot = await getDocs(q);
-            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setKeluargaOptions(data as Family[]);
-        } catch (error) {
-            console.error("Error fetching families:", error);
-        } finally {
-            setLoadingKeluarga(false);
-        }
-    }, [profile]);
 
     const formatAge = (dob: string | null | undefined) => {
         if (!dob) return '-';
@@ -192,13 +167,12 @@ export default function MemberEdit() {
     // --- EFFECTS ---
     useEffect(() => {
         if (id) {
-            const initData = async () => {
-                await fetchKeluarga();
-                await fetchMemberDetail(id);
-            };
-            initData();
+            if (profile) {
+                fetchFamilies(profile);
+            }
+            fetchMemberDetail(id);
         }
-    }, [id, fetchKeluarga, fetchMemberDetail]);
+    }, [id, profile, fetchFamilies, fetchMemberDetail]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {

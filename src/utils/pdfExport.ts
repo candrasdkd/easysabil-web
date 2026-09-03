@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import { toPng } from 'html-to-image';
 import dayjs from 'dayjs';
 
 /**
@@ -12,6 +10,11 @@ export const downloadComponentAsPDF = async (
     if (!element) return;
 
     try {
+        const [{ default: jsPDF }, { toPng }] = await Promise.all([
+            import('jspdf'),
+            import('html-to-image'),
+        ]);
+
         const dataUrl = await toPng(element, {
             cacheBust: true,
             backgroundColor: 'white',

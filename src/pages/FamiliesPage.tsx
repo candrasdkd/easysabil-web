@@ -7,7 +7,6 @@ import { db } from '../firebase/client';
 import { useAuth } from '../contexts/auth';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, X, Check, Users, Download, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ChevronDown, RefreshCw } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useFamiliesStore } from '../store/familiesStore';
 import { logAudit } from '../utils/auditLogger';
@@ -116,7 +115,7 @@ export default function FamiliesPage() {
     };
 
     // --- EXCEL IMPORT ---
-    const handleDownloadTemplate = () => {
+    const handleDownloadTemplate = async () => {
         const headers = ['Nama Keluarga', 'Kelompok'];
 
         let sampleData = [
@@ -132,7 +131,9 @@ export default function FamiliesPage() {
             ];
         }
 
-        const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+        try {
+            const XLSX = await import('xlsx');
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
 
         ws['!cols'] = [
             { wch: 30 }, // Nama Keluarga
@@ -142,10 +143,13 @@ export default function FamiliesPage() {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Template Import');
 
-        const fileName = 'Template_Import_Keluarga.xlsx';
-        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
-        toast.success('Template berhasil diunduh');
+            const fileName = 'Template_Import_Keluarga.xlsx';
+            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
+            toast.success('Template berhasil diunduh');
+        } catch (error: unknown) {
+            toast.error(`Gagal mengunduh template: ${getErrorMessage(error)}`);
+        }
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,6 +160,7 @@ export default function FamiliesPage() {
         const toastId = toast.loading('Memproses file Excel...');
 
         try {
+            const XLSX = await import('xlsx');
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
             const sheetName = workbook.SheetNames[0];
@@ -251,6 +256,7 @@ export default function FamiliesPage() {
         const toastId = toast.loading('Membaca file Excel untuk dibatalkan...');
 
         try {
+            const XLSX = await import('xlsx');
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
             const sheetName = workbook.SheetNames[0];

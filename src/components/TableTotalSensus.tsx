@@ -1,5 +1,4 @@
 import { useRef, useMemo, useEffect } from 'react';
-import jsPDF from 'jspdf';
 import dayjs from 'dayjs';
 import { type Member } from '../types/Member';
 import { useMembersStore } from '../store/membersStore';
@@ -232,6 +231,7 @@ export default function TabelSensus() {
                 style: { transform: 'none', margin: '0', overflow: 'visible' }
             });
 
+            const { default: jsPDF } = await import('jspdf');
             const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
             const imgProps = pdf.getImageProperties(dataUrl);
             const pdfWidth = pdf.internal.pageSize.getWidth();

@@ -21,7 +21,6 @@ import {
     FileText, Calendar as CalendarIcon, AlertCircle, Search, MessageSquare,
     Filter, ChevronDown, ChevronUp, Check, Clock, ArrowUpDown
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { useRoleMembersStore } from '../store/membersStore';
 import { useAuth } from '../contexts/auth';
@@ -649,8 +648,10 @@ export default function AttendanceLog() {
         );
     }, [rekapData, searchQuery]);
     // --- EXPORT FUNCTIONALITIES ---
-    const handleExportExcel = () => {
-        if (mode === 'input') {
+    const handleExportExcel = async () => {
+        try {
+            const XLSX = await import('xlsx');
+            if (mode === 'input') {
             const rows: (string | number)[][] = [
                 [`ABSENSI SESI PENGAJIAN ${selectedKelompok.toUpperCase()}`],
                 [`Tanggal Sesi`, dayjs(inputDate).format('dddd, DD MMMM YYYY')],
@@ -783,6 +784,10 @@ export default function AttendanceLog() {
             XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Jenjang');
             saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), `Rekap_Absensi_${rekapKelompok}_${rekapStartDate}_${rekapEndDate}.xlsx`);
             toast.success("File Excel Rekap berhasil diunduh (2 Sheet)");
+        }
+        } catch (error) {
+            console.error("Gagal export excel:", error);
+            toast.error("Gagal mendownload file Excel");
         }
     };
 
