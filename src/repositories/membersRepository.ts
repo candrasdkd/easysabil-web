@@ -46,8 +46,8 @@ function mapMember(snapshot: QueryDocumentSnapshot<DocumentData>): Member {
         is_duafa: booleanValue(data.is_duafa),
         created_at: stringValue(data.created_at),
         order: Number(data.order) || 0,
-        occupation_status: stringValue(data.occupation_status) || undefined,
-        sambung_ngaji_status: stringValue(data.sambung_ngaji_status) || undefined,
+        occupation_status: data.occupation_status !== undefined ? stringValue(data.occupation_status) : undefined,
+        sambung_ngaji_status: data.sambung_ngaji_status !== undefined ? stringValue(data.sambung_ngaji_status) : undefined,
     };
 }
 
@@ -68,11 +68,17 @@ async function fetchBaseMembers(profile: RoleProfile): Promise<Member[]> {
 }
 
 async function enrichMudaMember(member: Member): Promise<Member> {
-    if (member.occupation_status || member.sambung_ngaji_status) return member;
+    if (member.occupation_status !== undefined || member.sambung_ngaji_status !== undefined) return member;
 
     try {
         const snapshot = await getDoc(doc(db, 'sensus', member.uuid, 'muda_mudi_info', 'detail'));
-        if (!snapshot.exists()) return member;
+        if (!snapshot.exists()) {
+            return {
+                ...member,
+                occupation_status: '',
+                sambung_ngaji_status: '',
+            };
+        }
         const data = snapshot.data();
         return {
             ...member,
@@ -81,7 +87,11 @@ async function enrichMudaMember(member: Member): Promise<Member> {
         };
     } catch (error) {
         console.error(`Gagal mengambil data muda/i untuk ${member.uuid}:`, error);
-        return member;
+        return {
+            ...member,
+            occupation_status: '',
+            sambung_ngaji_status: '',
+        };
     }
 }
 

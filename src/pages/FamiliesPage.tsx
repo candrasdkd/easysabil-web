@@ -12,6 +12,8 @@ import { useFamiliesStore } from '../store/familiesStore';
 import { logAudit } from '../utils/auditLogger';
 import type { Family } from '../types/Member';
 import { getErrorMessage } from '../lib/errors';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import { sanitizeExcelInput } from '../utils/formatters';
 
 const KELOMPOK_OPTIONS = ['Kelompok 1', 'Kelompok 2', 'Kelompok 3', 'Kelompok 4', 'Kelompok 5'];
 const INITIAL_PAGE_SIZE = 15;
@@ -26,7 +28,10 @@ export default function FamiliesPage() {
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState(EMPTY_FORM);
-    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [familyToDelete, setFamilyToDelete] = useState<Family | null>(null);
+    const [isDeletingFamily, setIsDeletingFamily] = useState(false);
+    const [rollbackCandidates, setRollbackCandidates] = useState<Family[] | null>(null);
+    const [isRollingBack, setIsRollingBack] = useState(false);
     const [search, setSearch] = useState('');
     const [kelompokFilter, setKelompokFilter] = useState('');
     const { profile } = useAuth();
@@ -101,16 +106,25 @@ export default function FamiliesPage() {
         }
     };
 
-    const handleDelete = async (f: Family) => {
-        if (!window.confirm(`Hapus keluarga "${f.name}"?`)) return;
-        setDeletingId(f.id);
+    const handleDelete = (f: Family) => {
+        setFamilyToDelete(f);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!familyToDelete) return;
+        setIsDeletingFamily(true);
         try {
-            await deleteDoc(doc(db, 'families', f.id));
-            await logAudit('DELETE', 'FAMILY', f.id, f.name, profile, null, `Menghapus keluarga: ${f.name}`);
+            await deleteDoc(doc(db, 'families', familyToDelete.id));
+            if (profile) {
+                await logAudit('DELETE', 'FAMILY', familyToDelete.id, familyToDelete.name, profile, null, `Menghapus keluarga: ${familyToDelete.name}`);
+            }
             toast.success('Keluarga berhasil dihapus');
+            setFamilyToDelete(null);
             refreshStore();
+        } catch (error) {
+            toast.error(`Gagal menghapus keluarga: ${getErrorMessage(error)}`);
         } finally {
-            setDeletingId(null);
+            setIsDeletingFamily(false);
         }
     };
 
@@ -200,17 +214,13 @@ export default function FamiliesPage() {
                 const familyName = row[colName]?.toString().trim()?.toUpperCase() || '';
                 if (!familyName) continue;
 
-                let kelompokValue = row[colKelompok]?.toString().trim() || '';
-
-                // Pastikan admin kelompok hanya bisa import ke kelompoknya sendiri
+                let kelompokValue = sanitizeExcelInput(row[colKelompok]);
                 if (isKelompokAdmin && profile?.kelompok) {
                     kelompokValue = profile.kelompok;
-                } else if (!kelompokValue) {
-                    throw new Error(`Keluarga ${familyName} tidak memiliki kelompok. Cek kembali file excel Anda.`);
                 }
 
                 recordsToImport.push({
-                    name: familyName,
+                    name: sanitizeExcelInput(familyName),
                     kelompok: kelompokValue,
                 });
             }
@@ -234,6 +244,10 @@ export default function FamiliesPage() {
                     chBatch.set(newRef, record);
                 }
                 await chBatch.commit();
+            }
+
+            if (profile) {
+                await logAudit('IMPORT', 'FAMILY', 'BATCH', 'Import Excel', profile, null, `Mengimpor ${recordsToImport.length} data keluarga baru dari file Excel`);
             }
 
             toast.success(`${recordsToImport.length} data keluarga berhasil diimport`, { id: toastId });
@@ -314,18 +328,27 @@ export default function FamiliesPage() {
                 return;
             }
 
-            const confirmDelete = window.confirm(`Ditemukan ${familiesToDelete.length} keluarga dari Excel yang cocok di database saat ini. Yakin ingin MENGHAPUS mereka semua? (Aksi ini tidak bisa dikembalikan)`);
-            if (!confirmDelete) {
-                toast.dismiss(toastId);
-                return;
-            }
+            toast.dismiss(toastId);
+            setIsImportModalOpen(false);
+            setRollbackCandidates(familiesToDelete);
 
-            toast.loading(`Menghapus ${familiesToDelete.length} data keluarga dari database...`, { id: toastId });
+        } catch (error: unknown) {
+            toast.error(`Gagal rollback: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
+        } finally {
+            setIsImporting(false);
+            e.target.value = ''; // Reset file input
+        }
+    };
 
+    const handleConfirmRollback = async () => {
+        if (!rollbackCandidates || rollbackCandidates.length === 0) return;
+        setIsRollingBack(true);
+        const toastId = toast.loading(`Menghapus ${rollbackCandidates.length} data keluarga dari database...`);
+        try {
             const familiesColRef = collection(db, 'families');
             const chunks = [];
-            for (let i = 0; i < familiesToDelete.length; i += 450) {
-                chunks.push(familiesToDelete.slice(i, i + 450));
+            for (let i = 0; i < rollbackCandidates.length; i += 450) {
+                chunks.push(rollbackCandidates.slice(i, i + 450));
             }
 
             for (const chunk of chunks) {
@@ -337,15 +360,17 @@ export default function FamiliesPage() {
                 await chBatch.commit();
             }
 
-            toast.success(`${familiesToDelete.length} data keluarga berhasil dibatalkan (dihapus)`, { id: toastId });
-            setIsImportModalOpen(false);
-            refreshStore();
+            if (profile) {
+                await logAudit('DELETE', 'FAMILY', 'ROLLBACK', 'Rollback Import Excel', profile, null, `Membatalkan (rollback) ${rollbackCandidates.length} data keluarga dari database`);
+            }
 
+            toast.success(`${rollbackCandidates.length} data keluarga berhasil dibatalkan (dihapus)`, { id: toastId });
+            setRollbackCandidates(null);
+            refreshStore();
         } catch (error: unknown) {
             toast.error(`Gagal rollback: ${getErrorMessage(error)}`, { id: toastId, duration: 8000 });
         } finally {
-            setIsImporting(false);
-            e.target.value = ''; // Reset file input
+            setIsRollingBack(false);
         }
     };
 
@@ -410,13 +435,25 @@ export default function FamiliesPage() {
 
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3 mb-5">
-                <input
-                    type="text"
-                    placeholder="Cari nama keluarga..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    className={inputClass + ' sm:max-w-xs'}
-                />
+                <div className="relative sm:max-w-xs w-full">
+                    <input
+                        type="text"
+                        placeholder="Cari nama keluarga..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className={inputClass + ' pr-10 w-full'}
+                    />
+                    {search && (
+                        <button
+                            onClick={() => setSearch('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                            title="Hapus pencarian"
+                            type="button"
+                        >
+                            <X size={15} />
+                        </button>
+                    )}
+                </div>
                 {(profile?.status ?? 0) <= 2 && (
                     <div className="relative sm:w-48">
                         <select
@@ -478,14 +515,10 @@ export default function FamiliesPage() {
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(f)}
-                                                    disabled={deletingId === f.id}
-                                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                                     title="Hapus"
                                                 >
-                                                    {deletingId === f.id
-                                                        ? <div className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                                                        : <Trash2 size={15} />
-                                                    }
+                                                    <Trash2 size={15} />
                                                 </button>
                                             </div>
                                         </td>
@@ -678,6 +711,27 @@ export default function FamiliesPage() {
                     </div>
                 </div>
             )}
+
+            {/* Modals */}
+            <ConfirmDeleteModal
+                isOpen={Boolean(familyToDelete)}
+                onClose={() => setFamilyToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                uploading={isDeletingFamily}
+                title="Hapus Keluarga?"
+                description={`Apakah Anda yakin ingin menghapus data keluarga "${familyToDelete?.name}"? Aksi ini tidak dapat dibatalkan.`}
+                confirmLabel="Ya, Hapus"
+            />
+
+            <ConfirmDeleteModal
+                isOpen={Boolean(rollbackCandidates)}
+                onClose={() => setRollbackCandidates(null)}
+                onConfirm={handleConfirmRollback}
+                uploading={isRollingBack}
+                title="Batalkan (Rollback) Import Keluarga?"
+                description={`Ditemukan ${rollbackCandidates?.length || 0} keluarga dari Excel yang cocok di database. Seluruh data keluarga ini akan dihapus permanen. Lanjutkan?`}
+                confirmLabel="Ya, Hapus Semua"
+            />
         </div>
     );
 }

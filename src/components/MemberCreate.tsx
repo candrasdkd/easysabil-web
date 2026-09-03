@@ -23,6 +23,7 @@ import {
     BookOpen
 } from 'lucide-react';
 import { type Family } from '../types/Member';
+import { formatAge } from '../utils/formatters';
 import { getErrorMessage } from '../lib/errors';
 import CustomDatePicker from './CustomDatePicker';
 import { logAudit } from '../utils/auditLogger';
@@ -103,20 +104,6 @@ export default function MemberCreate() {
     }, []);
 
 
-    const formatAge = (dob: string | null | undefined) => {
-        if (!dob) return '-';
-        const birthDate = dayjs(dob);
-        const today = dayjs();
-        if (birthDate.isAfter(today)) return '-';
-
-        const years = today.diff(birthDate, 'year');
-        const months = today.diff(birthDate.add(years, 'year'), 'month');
-
-        if (years === 0 && months === 0) return '< 1 Bulan';
-        if (years === 0) return `${months} Bulan`;
-        if (months === 0) return `${years} Tahun`;
-        return `${years} Tahun ${months} Bulan`;
-    };
 
     const updateFormValue = (name: string, value: string | number | boolean | null) => {
         setFormValues(prev => {

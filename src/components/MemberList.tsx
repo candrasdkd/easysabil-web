@@ -32,6 +32,7 @@ import { logAudit } from '../utils/auditLogger';
 import { useMembersStore, useRoleMembersStore } from '../store/membersStore';
 import { getErrorMessage } from '../lib/errors';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import { formatAge, sanitizeExcelInput } from '../utils/formatters';
 
 dayjs.locale('id');
 
@@ -82,6 +83,14 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
     // --- State ---
     const [searchText, setSearchText] = useState(() => getSavedState('searchText', ''));
+    const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchText(searchText);
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [searchText]);
     const [currentPage, setCurrentPage] = useState(() => getSavedState('currentPage', 1));
     const [pageSize, setPageSize] = useState(() => getSavedState('pageSize', INITIAL_PAGE_SIZE));
 
@@ -146,22 +155,6 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
     }, [searchText, currentPage, pageSize, selectedGender, selectedLevel, selectedMarriageStatus, memberStatus, selectedFamily, familySearchKeyword, selectedKelompok, educateFilter, duafaFilter]);
 
-    // --- Logic Helper ---
-    const formatAge = (dob: string | null | undefined) => {
-        if (!dob) return '-';
-        const birthDate = dayjs(dob);
-        const today = dayjs();
-        if (birthDate.isAfter(today)) return '-';
-
-        const years = today.diff(birthDate, 'year');
-        const months = today.diff(birthDate.add(years, 'year'), 'month');
-
-        if (years === 0 && months === 0) return '< 1 Bulan';
-        if (years === 0) return `${months} Bulan`;
-        if (months === 0) return `${years} Tahun`;
-        return `${years} Tahun ${months} Bulan`;
-    };
-
     const highlightMatch = (text: string | number | null, search: string) => {
         const source = String(text ?? '');
         if (!search) return source;
@@ -204,17 +197,21 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         if (selectedLevel.length) filtered = filtered.filter(m => selectedLevel.includes(m.level));
         if (selectedMarriageStatus.length) filtered = filtered.filter(m => selectedMarriageStatus.includes(m.marriage_status));
 
-        if (searchText.trim()) {
-            const q = searchText.toLowerCase();
-            filtered = filtered.filter(m =>
-                Object.entries(m).some(([key, value]) => {
-                    // Hanya kecualikan uuid dan id_family agar pencarian berfungsi untuk family_name
-                    if (value == null || key === 'uuid' || key === 'id_family' || key === 'family_id') return false;
-                    let str = String(value);
-                    if (key === 'date_of_birth') str = dayjs(value as string).format('DD MMMM YYYY');
-                    return str.toLowerCase().includes(q);
-                })
-            );
+        if (debouncedSearchText.trim()) {
+            const q = debouncedSearchText.toLowerCase();
+            filtered = filtered.filter(m => {
+                if (m.name && m.name.toLowerCase().includes(q)) return true;
+                if (m.alias && m.alias.toLowerCase().includes(q)) return true;
+                if (m.family_name && m.family_name.toLowerCase().includes(q)) return true;
+                if (m.kelompok && m.kelompok.toLowerCase().includes(q)) return true;
+                if (m.level && m.level.toLowerCase().includes(q)) return true;
+                if (m.gender && m.gender.toLowerCase().includes(q)) return true;
+                if (m.marriage_status && m.marriage_status.toLowerCase().includes(q)) return true;
+                if (m.occupation_status && m.occupation_status.toLowerCase().includes(q)) return true;
+                if (m.sambung_ngaji_status && m.sambung_ngaji_status.toLowerCase().includes(q)) return true;
+                if (m.date_of_birth && dayjs(m.date_of_birth).format('DD MMMM YYYY').toLowerCase().includes(q)) return true;
+                return false;
+            });
         }
 
         filtered.sort((a, b) => {
@@ -240,7 +237,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             return sortConfig.direction === 'asc' ? comparison : -comparison;
         });
         return filtered;
-    }, [members, searchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily, selectedKelompok, listFamily, educateFilter, duafaFilter]);
+    }, [members, debouncedSearchText, memberStatus, selectedGender, selectedLevel, selectedMarriageStatus, sortConfig, selectedFamily, selectedKelompok, listFamily, educateFilter, duafaFilter]);
 
     const paginatedMembers = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -412,6 +409,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
 
+        if (profile) {
+            await logAudit(
+                'EXPORT',
+                'MEMBER',
+                'ALL',
+                `Export Excel (${exportType})`,
+                profile,
+                null,
+                `Mengekspor ${processedMembers.length} data anggota ke Excel (${exportType === 'simple' ? 'Simple' : 'Lengkap'})`
+            );
+        }
+
         toast.success('File Excel berhasil diunduh', { id: toastId });
         } catch (error: unknown) {
             toast.error(`Gagal ekspor: ${getErrorMessage(error)}`, { id: toastId });
@@ -548,16 +557,21 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 const isActiveStr = row[colActive]?.toString().toLowerCase() || '';
                 const isActive = isActiveStr === 'aktif' || isActiveStr === 'true' || isActiveStr === '1';
 
+                let finalKelompok = sanitizeExcelInput(row[colKelompok]);
+                if ((profile?.status === 3 || profile?.status === 5) && profile?.kelompok) {
+                    finalKelompok = profile.kelompok;
+                }
+
                 recordsToImport.push({
-                    name: row[colName]?.toString().trim() || '',
-                    alias: row[colAlias]?.toString().trim() || row[colName]?.toString().trim() || '',
-                    kelompok: row[colKelompok]?.toString().trim() || '',
+                    name: sanitizeExcelInput(row[colName]),
+                    alias: sanitizeExcelInput(row[colAlias]) || sanitizeExcelInput(row[colName]),
+                    kelompok: finalKelompok,
                     date_of_birth: dobStr,
-                    gender: row[colGender]?.toString().trim() || '',
-                    level: row[colLevel]?.toString().trim() || '',
-                    marriage_status: row[colMarriage]?.toString().trim() || '',
+                    gender: sanitizeExcelInput(row[colGender]),
+                    level: sanitizeExcelInput(row[colLevel]),
+                    marriage_status: sanitizeExcelInput(row[colMarriage]),
                     family_id: familyObj ? familyObj.id : null,
-                    family_name: familyObj ? familyObj.name : familyName,
+                    family_name: familyObj ? familyObj.name : sanitizeExcelInput(familyName),
                     is_active: isActive,
                     is_educate: false,
                     order: parseInt(row[colOrder]?.toString() || '999', 10) || 999,
@@ -600,6 +614,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
             useMembersStore.getState().invalidate();
             useRoleMembersStore.getState().invalidate();
+
+            if (profile) {
+                await logAudit(
+                    'IMPORT',
+                    'MEMBER',
+                    'BATCH',
+                    'Import Excel',
+                    profile,
+                    null,
+                    `Mengimpor ${recordsToImport.length} anggota baru ke database dari file Excel`
+                );
+            }
 
             toast.success(`${recordsToImport.length} data berhasil diimport`, { id: toastId });
             setIsImportModalOpen(false);
@@ -701,6 +727,18 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
 
             useMembersStore.getState().invalidate();
             useRoleMembersStore.getState().invalidate();
+
+            if (profile) {
+                await logAudit(
+                    'DELETE',
+                    'MEMBER',
+                    'ROLLBACK',
+                    'Rollback Import Excel',
+                    profile,
+                    null,
+                    `Membatalkan (rollback) ${rollbackCandidates.length} anggota dari database`
+                );
+            }
 
             toast.success(`${rollbackCandidates.length} data berhasil dibatalkan (dihapus)`, { id: toastId });
             setRollbackCandidates(null);
@@ -855,9 +893,22 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                             setSearchText(e.target.value);
                             setCurrentPage(1);
                         }}
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     />
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    {searchText && (
+                        <button
+                            onClick={() => {
+                                setSearchText('');
+                                setCurrentPage(1);
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                            title="Hapus pencarian"
+                            type="button"
+                        >
+                            <X size={15} />
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex gap-2 w-full md:w-auto">

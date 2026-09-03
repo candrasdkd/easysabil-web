@@ -4,6 +4,7 @@ import { db } from '../firebase/client';
 import toast from 'react-hot-toast';
 import { type UserProfile, useAuth, STATUS_LABELS } from '../contexts/auth';
 import { ChevronDown } from 'lucide-react';
+import { logAudit } from '../utils/auditLogger';
 
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<UserProfile[]>([]);
@@ -49,7 +50,19 @@ export default function AdminUsersPage() {
     const handleToggleActive = async (uid: string, currentIsActive: boolean) => {
         setTogglingUids(prev => new Set(prev).add(uid));
         try {
+            const targetUser = users.find(u => u.uid === uid);
             await updateDoc(doc(db, 'users', uid), { isActive: !currentIsActive });
+            if (currentUserProfile) {
+                await logAudit(
+                    'UPDATE',
+                    'SYSTEM',
+                    uid,
+                    targetUser?.email || uid,
+                    currentUserProfile,
+                    { isActive: !currentIsActive },
+                    `${!currentIsActive ? 'Mengaktifkan' : 'Menonaktifkan'} akun pengguna: ${targetUser?.email || uid}`
+                );
+            }
             toast.success(`Akun berhasil ${!currentIsActive ? 'diaktifkan' : 'dinonaktifkan'}`);
             setUsers(prev => prev.map(u => u.uid === uid ? { ...u, isActive: !currentIsActive } : u));
         } catch {
@@ -62,7 +75,19 @@ export default function AdminUsersPage() {
     const handleChangeStatus = async (uid: string, newStatus: number) => {
         if (!isSuperAdmin) return;
         try {
+            const targetUser = users.find(u => u.uid === uid);
             await updateDoc(doc(db, 'users', uid), { status: newStatus });
+            if (currentUserProfile) {
+                await logAudit(
+                    'UPDATE',
+                    'SYSTEM',
+                    uid,
+                    targetUser?.email || uid,
+                    currentUserProfile,
+                    { status: newStatus },
+                    `Mengubah hak akses/role akun ${targetUser?.email || uid} menjadi ${STATUS_LABELS[newStatus] || newStatus}`
+                );
+            }
             toast.success('Status pengurus berhasil diubah');
             setUsers(prev => prev.map(u => u.uid === uid ? { ...u, status: newStatus } : u).sort((a, b) => a.status - b.status));
         } catch {
