@@ -2,13 +2,25 @@ import { Navigate, useLocation } from "react-router";
 import { useAuth } from '../contexts/auth';
 import { type ReactNode } from "react";
 import { MessageCircle, LogOut } from "lucide-react";
-import { isKnownUserStatus } from '../types/auth';
+import { hasGroupScopedAccess, isKnownUserStatus } from '../types/auth';
 
 // Admin WhatsApp number
 const ADMIN_WA_NUMBER = "6285156775933"; // Ganti dengan nomor WhatsApp admin
 const ADMIN_WA_MESSAGE = encodeURIComponent("Halo Admin, saya ingin mengaktifkan akun saya di EasySabil.");
 
-export default function ProtectedRoute({ children, adminOnly = false, superAdminOnly = false }: { children: ReactNode, adminOnly?: boolean, superAdminOnly?: boolean }) {
+interface ProtectedRouteProps {
+    children: ReactNode;
+    adminOnly?: boolean;
+    superAdminOnly?: boolean;
+    attendanceDisabledForGroupScopedUsers?: boolean;
+}
+
+export default function ProtectedRoute({
+    children,
+    adminOnly = false,
+    superAdminOnly = false,
+    attendanceDisabledForGroupScopedUsers = false,
+}: ProtectedRouteProps) {
     const { user, profile, loading, signOut } = useAuth();
     const location = useLocation();
 
@@ -89,6 +101,10 @@ export default function ProtectedRoute({ children, adminOnly = false, superAdmin
 
     // Admin only routes (status === 0 or 1)
     if (adminOnly && profile.status > 1) {
+        return <Navigate to="/" replace />;
+    }
+
+    if (attendanceDisabledForGroupScopedUsers && hasGroupScopedAccess(profile)) {
         return <Navigate to="/" replace />;
     }
 

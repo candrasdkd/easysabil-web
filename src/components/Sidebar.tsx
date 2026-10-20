@@ -20,6 +20,7 @@ import {
     CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '../contexts/auth';
+import { hasGroupScopedAccess } from '../types/auth';
 
 const baseNavItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -49,8 +50,9 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         profile?.status === 0 ||
         profile?.status === 1 ||
         (profile?.status === 3 && profile?.kelompok === 'Kelompok 1');
+    const canSeeAttendance = !hasGroupScopedAccess(profile);
 
-    const navItems = [...baseNavItems];
+    const navItems = baseNavItems.filter((item) => item.path !== '/attendance' || canSeeAttendance);
     if (canSeeOrders) {
         navItems.splice(3, 0, { label: 'Pemesanan', path: '/category-orders', icon: ShoppingCart });
     }

@@ -29,3 +29,9 @@ export const STATUS_LABELS: Readonly<Record<number, string>> = {
 export function isKnownUserStatus(status: number): boolean {
     return Number.isInteger(status) && status >= 0 && status <= 5;
 }
+
+export function hasGroupScopedAccess(
+    profile: Pick<UserProfile, 'status'> | null | undefined,
+): boolean {
+    return profile?.status === 3 || profile?.status === 5;
+}

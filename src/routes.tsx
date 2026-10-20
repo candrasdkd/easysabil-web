@@ -85,7 +85,7 @@ export default function AppRoutes() {
                         <Route path="/category-orders" element={<ProtectedPage><CategoryOrdersPage /></ProtectedPage>} />
                         <Route path="/category-orders/list" element={<ProtectedPage><OrdersPage /></ProtectedPage>} />
                         <Route path="/rekap" element={<ProtectedPage><CensusSummaryPage /></ProtectedPage>} />
-                        <Route path="/attendance" element={<ProtectedPage><AttendancePage /></ProtectedPage>} />
+                        <Route path="/attendance" element={<ProtectedRoute attendanceDisabledForGroupScopedUsers><AttendancePage /></ProtectedRoute>} />
                     </Routes>
                 </Suspense>
             </main>
