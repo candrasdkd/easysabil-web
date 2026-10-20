@@ -51,6 +51,27 @@ type DuafaFilter = 'Semua' | 'Duafa' | 'Bukan Duafa';
 type ExcelCell = string | number | boolean | null | undefined;
 type ExcelRow = ExcelCell[];
 
+const EXPORT_COLUMNS = [
+    { key: 'number', label: 'No', width: 8, getValue: (_member: Member, index: number) => index + 1 },
+    { key: 'alias', label: 'Nama Panggilan', width: 25, getValue: (member: Member) => sanitizeExcelInput(member.alias || member.name) },
+    { key: 'name', label: 'Nama Asli', width: 30, getValue: (member: Member) => sanitizeExcelInput(member.name) },
+    { key: 'family', label: 'Nama Keluarga', width: 28, getValue: (member: Member) => sanitizeExcelInput(member.family_name || 'Tanpa Keluarga') },
+    { key: 'kelompok', label: 'Kelompok', width: 16, getValue: (member: Member) => sanitizeExcelInput(member.kelompok) },
+    { key: 'level', label: 'Jenjang', width: 16, getValue: (member: Member) => sanitizeExcelInput(member.level) },
+    { key: 'gender', label: 'Gender', width: 16, getValue: (member: Member) => sanitizeExcelInput(member.gender) },
+    { key: 'age', label: 'Umur', width: 16, getValue: (member: Member) => formatAge(member.date_of_birth) },
+    { key: 'date_of_birth', label: 'Tgl Lahir', width: 16, getValue: (member: Member) => member.date_of_birth ? dayjs(member.date_of_birth).format('DD MMM YYYY') : '-' },
+    { key: 'marriage_status', label: 'Status Nikah', width: 18, getValue: (member: Member) => sanitizeExcelInput(member.marriage_status) },
+    { key: 'active', label: 'Status Keaktifan', width: 18, getValue: (member: Member) => member.is_active ? 'Aktif' : 'Non-Aktif' },
+    { key: 'educate', label: 'Status Binaan', width: 16, getValue: (member: Member) => member.is_educate ? 'Binaan' : 'Jamaah' },
+    { key: 'duafa', label: 'Status Duafa', width: 16, getValue: (member: Member) => member.is_duafa ? 'Duafa' : 'Bukan Duafa' },
+    { key: 'occupation_status', label: 'Status Pekerjaan', width: 22, getValue: (member: Member) => sanitizeExcelInput(member.occupation_status) },
+    { key: 'sambung_ngaji_status', label: 'Status Sambung Ngaji', width: 24, getValue: (member: Member) => sanitizeExcelInput(member.sambung_ngaji_status) },
+    { key: 'order', label: 'No Urut', width: 10, getValue: (member: Member) => member.order ?? '' },
+] satisfies { key: string; label: string; width: number; getValue: (member: Member, index: number) => ExcelCell }[];
+
+type ExportColumnKey = (typeof EXPORT_COLUMNS)[number]['key'];
+
 const Badge = ({ children, color }: { children: React.ReactNode, color: 'green' | 'red' | 'gray' | 'blue' }) => {
     const colors = {
         green: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -126,6 +147,9 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [selectedExportColumns, setSelectedExportColumns] = useState<ExportColumnKey[]>(() =>
+        EXPORT_COLUMNS.map((column) => column.key)
+    );
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
@@ -300,7 +324,16 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
     };
 
     // --- ADVANCED EXCEL EXPORT (GROUPED BY FAMILY WITH OPTIONS) ---
-    const handleExportExcel = async (exportType: 'simple' | 'full' = 'simple') => {
+    const handleExportExcel = async (
+        exportType: 'simple' | 'full' | 'custom' = 'simple',
+        customColumnKeys: ExportColumnKey[] = selectedExportColumns
+    ) => {
+        const customColumns = EXPORT_COLUMNS.filter((column) => customColumnKeys.includes(column.key));
+        if (exportType === 'custom' && customColumns.length === 0) {
+            toast.error('Pilih minimal satu kolom untuk diekspor.');
+            return;
+        }
+
         setIsExportModalOpen(false);
         const toastId = toast.loading('Menyiapkan file Excel...');
 
@@ -345,7 +378,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                     row.name
                 ]);
             });
-        } else {
+        } else if (exportType === 'full') {
             const tableHeaders = [
                 'No', 'Nama Panggilan', 'Nama Asli', 'Jenjang',
                 'Gender', 'Umur', 'Tgl Lahir', 'Status Nikah', 'Status Keaktifan'
@@ -374,6 +407,12 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 excelRows.push(['']);
                 excelRows.push(['']);
             });
+        } else {
+            excelRows.push(customColumns.map((column) => column.label));
+
+            processedMembers.forEach((row, index) => {
+                excelRows.push(customColumns.map((column) => column.getValue(row, index)));
+            });
         }
 
         // 3. Buat Worksheet dari Array of Arrays
@@ -386,7 +425,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 { wch: 25 }, // Nama Panggilan
                 { wch: 35 }, // Nama Asli
             ];
-        } else {
+        } else if (exportType === 'full') {
             ws['!cols'] = [
                 { wch: 5 },  // No
                 { wch: 20 }, // Nama Panggilan
@@ -398,14 +437,17 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 { wch: 15 }, // Status Nikah
                 { wch: 15 }, // Status
             ];
+        } else {
+            ws['!cols'] = customColumns.map((column) => ({ wch: column.width }));
         }
 
         const wb = XLSX.utils.book_new();
-        const sheetName = exportType === 'simple' ? 'Urutan & Nama' : 'Data Per Keluarga';
+        const sheetName = exportType === 'simple' ? 'Urutan & Nama' : exportType === 'full' ? 'Data Per Keluarga' : 'Kolom Pilihan';
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
         // 5. Download File
-        const fileName = `Data_Jamaah_${exportType === 'simple' ? 'Simple' : 'Lengkap'}_${dayjs().format('DD-MM-YYYY')}.xlsx`;
+        const exportLabel = exportType === 'simple' ? 'Simple' : exportType === 'full' ? 'Lengkap' : 'Custom';
+        const fileName = `Data_Jamaah_${exportLabel}_${dayjs().format('DD-MM-YYYY')}.xlsx`;
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
 
@@ -414,10 +456,10 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                 'EXPORT',
                 'MEMBER',
                 'ALL',
-                `Export Excel (${exportType})`,
+                `Export Excel (${exportLabel})`,
                 profile,
                 null,
-                `Mengekspor ${processedMembers.length} data anggota ke Excel (${exportType === 'simple' ? 'Simple' : 'Lengkap'})`
+                `Mengekspor ${processedMembers.length} data anggota ke Excel (${exportLabel}${exportType === 'custom' ? `: ${customColumns.map((column) => column.label).join(', ')}` : ''})`
             );
         }
 
@@ -1381,7 +1423,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
             {/* --- EXPORT EXCEL MODAL --- */}
             {isExportModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                             <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                                 <Download size={18} className="text-emerald-600" /> Export File Excel
@@ -1390,7 +1432,7 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                 <X size={20} />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-4 overflow-y-auto">
                             <p className="text-sm text-slate-600">Pilih opsi format file Excel yang ingin diunduh:</p>
 
                             <div className="flex flex-col gap-3">
@@ -1415,6 +1457,64 @@ export default function MemberList({ loading, members, refreshMembers }: Props) 
                                     </div>
                                     <p className="text-xs text-slate-500">Mendownload seluruh kolom detail (Jenjang, Gender, Umur, Tgl Lahir, Status Nikah, Keaktifan).</p>
                                 </button>
+                            </div>
+
+                            <div className="border-t border-slate-200 pt-4 space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h4 className="font-semibold text-sm text-slate-800">Pilih kolom sendiri</h4>
+                                        <p className="text-xs text-slate-500 mt-1">Kolom yang dicentang akan dimasukkan ke file Excel.</p>
+                                    </div>
+                                    <div className="flex gap-3 text-xs font-medium">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedExportColumns(EXPORT_COLUMNS.map((column) => column.key))}
+                                            className="text-blue-700 hover:text-blue-900"
+                                        >
+                                            Pilih semua
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedExportColumns([])}
+                                            className="text-slate-500 hover:text-slate-700"
+                                        >
+                                            Kosongkan
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 p-3">
+                                    {EXPORT_COLUMNS.map((column) => (
+                                        <label
+                                            key={column.key}
+                                            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedExportColumns.includes(column.key)}
+                                                onChange={() => setSelectedExportColumns((current) =>
+                                                    current.includes(column.key)
+                                                        ? current.filter((key) => key !== column.key)
+                                                        : EXPORT_COLUMNS.filter((item) => current.includes(item.key) || item.key === column.key).map((item) => item.key)
+                                                )}
+                                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <span>{column.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <span className="text-xs text-slate-500">{selectedExportColumns.length} kolom dipilih</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleExportExcel('custom')}
+                                        disabled={selectedExportColumns.length === 0}
+                                        className="px-4 py-2.5 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-colors disabled:cursor-not-allowed disabled:bg-slate-300"
+                                    >
+                                        Download Excel Pilihan
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
